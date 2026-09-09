@@ -1,0 +1,170 @@
+# Матрица сканирования: 15 ниш x языки x 2 запроса.
+# Сейчас заполнены только en и de — сначала выбираем нишу по рынку, потом язык.
+#
+# Правила формулировки (выведены из замеров на живой выдаче Data API):
+#  - 2-4 слова, лучше 2. Замерено: "insolvenz doku" -> 14 сырых,
+#    "insolvenz unternehmen doku" -> 6, "wie verdient lidl wirklich sein geld" -> 1.
+#  - Никаких стопок существительных: три существительных подряд режут выдачу вдвое.
+#  - Никаких слов-суффиксов (erklärt / explained / expliqué): тянут софт-туториалы,
+#    продуктовые анонсы и политику.
+#  - Без брендов: бренд сужает выдачу до одной компании.
+#  - Два запроса на пару берут разные углы, чтобы выдача не дублировалась.
+#
+# rpm_niche_factor — множитель к RPM языка: рекламодатели платят за тему,
+# а не только за страну. Итоговый score:
+#   rpm_estimate * rpm_niche_factor * demand_views * competition_factor * (1 + newcomer_share)
+
+languages:
+  en: {region: US, rpm_estimate: 6.5}
+  de: {region: DE, rpm_estimate: 8.0}
+  nl: {region: NL, rpm_estimate: 8.0}
+  fr: {region: FR, rpm_estimate: 3.0}
+  pl: {region: PL, rpm_estimate: 2.5}
+  it: {region: IT, rpm_estimate: 3.5}
+
+niches:
+  business_breakdowns:
+    rpm_niche_factor: 1.0
+    description: >-
+      Разбор бизнеса конкретной компании: как она устроена, на чём зарабатывает,
+      почему выросла или разорилась. Не туториалы по софту, не обзоры товаров,
+      не мотивация, не биржевая аналитика по акциям.
+    queries:
+      en: [company collapse, business empire]
+      de: [insolvenz doku, konzern doku]
+
+  industries_inside:
+    rpm_niche_factor: 0.9
+    excluded: true
+    excluded_reason: >-
+      Ad-unfriendly. 68% просмотров ниши держит волна клонов одного сюжета
+      («Inside the White Brahman Bull Horn Factory», 19 почти одинаковых роликов
+      от 8 каналов), контент — забой и разделка скота; проверка обложек дала
+      unsafe. Плюс значительная часть роликов — сфабрикованные AI-«заводы».
+      Из отчётов и очереди тем не брать.
+    description: >-
+      Как устроена отрасль изнутри: порты, логистика, авиалинии, склады, заводы,
+      цепочки поставок. Не влоги путешественников, не обзоры техники.
+    queries:
+      en: [inside factory, port logistics]
+      de: [fabrik doku, hafen doku]
+
+  tech_ai_nohype:
+    rpm_niche_factor: 1.0
+    description: >-
+      Технологии и искусственный интеллект без хайпа: что реально работает,
+      где предел, чем закончились обещания. Не реклама нейросервисов,
+      не промпт-курсы, не новостные нарезки.
+    queries:
+      en: [ai hype, ai workflow]
+      de: [ki hype, ki praxis]
+
+  money_everyday:
+    rpm_niche_factor: 1.0
+    description: >-
+      Деньги и быт: аренда и цены на жильё, зарплаты, рынок труда, стоимость
+      жизни, переезд. Не трейдинг, не крипта, не инвест-советы, не схемы заработка.
+    queries:
+      en: [cost of living, salary reality]
+      de: [lebenshaltungskosten doku, mietwahnsinn doku]
+
+  companies_scandals:
+    rpm_niche_factor: 0.9
+    description: >-
+      Корпоративные скандалы и мошенничество: подделка отчётности, обман
+      инвесторов, расследования, крах на фоне скандала. Не бытовой криминал,
+      не политические скандалы без корпоративной подоплёки.
+    queries:
+      en: [corporate fraud, company scandal]
+      de: [wirtschaftsskandal doku, bilanzbetrug doku]
+
+  history_whatif:
+    rpm_niche_factor: 0.6
+    description: >-
+      История и альтернативная история в формате объяснялки: как всё было,
+      что было бы если. Территория стикмен-анимации и карт. Не школьные лекции,
+      не реконструкции с актёрами.
+    queries:
+      en: [alternate history, history animated]
+      de: [was wäre wenn, geschichte animiert]
+
+  true_crime_docs:
+    rpm_niche_factor: 0.6
+    description: >-
+      Криминальные истории и расследования: преступления, следствие, суд,
+      судьбы фигурантов. Не корпоративное мошенничество, не новостные сводки.
+    queries:
+      en: [true crime, crime documentary]
+      de: [true crime doku, kriminalfall doku]
+
+  psychology_facts:
+    rpm_niche_factor: 0.5
+    description: >-
+      Психология и поведение человека: почему мы так поступаем, когнитивные
+      искажения, отношения, мотивация. Не терапия-влоги, не эзотерика.
+    queries:
+      en: [psychology facts, human behavior]
+      de: [psychologie fakten, menschliches verhalten]
+
+  space_science:
+    rpm_niche_factor: 0.7
+    description: >-
+      Космос и наука популярно: астрономия, физика, устройство Вселенной,
+      космические миссии. Не уфология, не астрология, не новости запусков.
+    queries:
+      en: [space documentary, cosmos science]
+      de: [weltall doku, astronomie doku]
+
+  geography_maps:
+    rpm_niche_factor: 0.7
+    description: >-
+      География и карты: страны, границы, почему территория выглядит так,
+      демография, климат. Не туристические влоги, не путеводители.
+    queries:
+      en: [geography facts, country borders]
+      de: [geografie doku, länder grenzen]
+
+  mysteries_unexplained:
+    rpm_niche_factor: 0.6
+    description: >-
+      Тайны и необъяснимое: исчезновения, нераскрытые загадки, странные
+      находки, аномалии. Не расследования преступлений с известным финалом.
+    queries:
+      en: [unsolved mystery, unexplained disappearance]
+      de: [ungelöste rätsel, mysteriöse fälle]
+
+  military_history:
+    rpm_niche_factor: 0.7
+    description: >-
+      Военная история: войны, сражения, оружие, техника, стратегия.
+      Не современные новости конфликтов, не игровые ролики.
+    queries:
+      en: [military history, war documentary]
+      de: [militärgeschichte doku, kriegsdoku]
+
+  disasters_survival:
+    rpm_niche_factor: 0.6
+    description: >-
+      Катастрофы, выживание и инженерные провалы: аварии, крушения,
+      разбор причин, истории спасения. Не хроника новостей, не пранки.
+    queries:
+      en: [engineering disaster, survival story]
+      de: [katastrophe doku, unglück doku]
+
+  luxury_rich_lifestyle:
+    rpm_niche_factor: 0.5
+    description: >-
+      Богатство и роскошь: как живут миллиардеры, яхты, особняки, частные
+      самолёты, дорогие вещи. Не инвест-советы, не мотивация про успех.
+    queries:
+      en: [billionaire lifestyle, luxury life]
+      de: [luxus leben, milliardär lifestyle]
+
+  top_lists_facts:
+    rpm_niche_factor: 0.5
+    description: >-
+      Подборки и факты: топ-10, рейтинги, интересные факты, сравнения.
+      Формат перечисления, а не разбор одной темы.
+    queries:
+      en: [top 10 facts, amazing facts]
+      de: [top 10 fakten, unglaubliche fakten]
