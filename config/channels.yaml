@@ -1,0 +1,143 @@
+# Три канала фазы 1. Шаблоны заголовков, типы хуков и палитры взяты из
+# reports/deepdive_2026-09-09.md — это замеры на живой выдаче, не догадки.
+
+defaults:
+  lang: en
+  # Голоса выбраны на слух в ElevenLabs. Один голос на несколько каналов
+  # запрещён — см. CLAUDE.md, раздел «Голоса каналов».
+  voice_pool:
+    - {name: George, id: JBFqnCBsd6RMkjVDRZzb, note: "британец, тёплый рассказчик", used_by: business}
+    - {name: Roger,  id: CwhRBWXzGAHq8TQ4Fs17, note: "американец, расслабленный, резонирующий", used_by: space}
+    - {name: Callum, id: N2lVS1w4EtoT3dr4eOWO, note: "хрипловатый, с тревожной ноткой", used_by: disasters}
+    - {name: Will,   id: bIHbv24MWmeRgasZH58o, note: "молодой американец, разговорный", used_by: null}
+  words_per_minute: 150      # под расчёт длины сценария
+  scene_seconds: [8, 20]     # длительность одной сцены
+  kling_per_video: [3, 5]    # лимит генеративных вставок
+  max_same_source_in_row: 2  # разнообразие источников
+  loudness_lufs: -14
+  resolution: [1920, 1080]
+  fps: 30
+
+  # Анти-слоп: правила, общие для всех каналов. Нарушение — работа критика.
+  anti_slop:
+    banned_phrases:
+      - "in this video"
+      - "let's dive in"
+      - "buckle up"
+      - "without further ado"
+      - "we've all been there"
+      - "little did they know"
+      - "the results will shock you"
+      - "stay tuned"
+      - "here's the kicker"
+      - "game changer"
+      - "at the end of the day"
+      - "it's important to note"
+    rules:
+      - Никаких списков-перечислений вслух: «первое, второе, третье» — это текст, а не речь.
+      - Конкретика вместо оценок: не «огромная сумма», а «$4.3 млрд за квартал».
+      - Не больше одного прилагательного на существительное.
+      - Никаких симметричных парных конструкций («не просто X, а Y») чаще раза на ролик.
+      - Каждый фактический тезис опирается на пункт brief.md с источником.
+      - Разговорный английский: сокращения (it's, doesn't), короткие предложения.
+
+channels:
+  business:
+    id: business
+    niche: business_breakdowns
+    primary: true                  # основной канал тройки
+    subniche: Крах европейских и британских брендов
+    voice_id: "JBFqnCBsd6RMkjVDRZzb"      # George — британец, тёплый рассказчик
+    target_minutes: [10, 13]
+    format_reference: >-
+      Mondo Startups (8 180 подписчиков, каналу 13 месяцев, v/s до 35) — обложка
+      строится как стилизованный вордмарк бренда плюс 2-3 слова приговора.
+      Ни лиц, ни плашек новостных каналов, ни имитации эфира.
+    visual_style: >-
+      Сток плюс программная графика: архив производств и магазинов, биржевые
+      графики и падающие стрелки рисуются Remotion из чисел сценария.
+    thumb_palette: ["#D0021B", "#FFFFFF", "#111111"]
+    thumb_rules:
+      big_text: true
+      max_words: 3                 # 2-3 слова, как у референса
+      faces: false
+      brand_wordmark: true         # вордмарк рисуем из названия, файл логотипа не берём
+      news_chrome: false           # никаких плашек СМИ и «BREAKING»
+    motion_share: [0.20, 0.30]     # доля сцен с программной анимацией
+    title_templates:
+      - "[Company] Is Collapsing"
+      - "Why [Company] Failed"
+      - "[Number] Mistakes That Killed [Company]"
+      - "Can [Company] Actually Survive This?"
+      - "[Status] Then: [Company] Now..."
+    hook_types:
+      - Шокирующая цифра, противоречащая ожиданию
+      - Парадокс успеха-провала
+      - Отрицание общего мнения
+      - Обещание раскрыть скрытую причину
+    kling_bias: low
+
+  space:
+    id: space
+    niche: space_science
+    subniche: Планеты и разведка миссий
+    voice_id: "CwhRBWXzGAHq8TQ4Fs17"      # Roger — американец, расслабленный
+    target_minutes: [12, 14]
+    visual_style: >-
+      AI-визуал плюс сток: виды планет, поверхностей и аппаратов вперемешку
+      с реальными кадрами миссий и телескопов.
+    thumb_palette: ["#0B0B10", "#FF7A1A", "#2E7BE6"]
+    thumb_rules:
+      big_text: true
+      max_words: 4
+      faces: false
+      news_chrome: false
+    honesty_rules:
+      - Никаких имитаций плашек NASA, ESA, CNN, BREAKING NEWS и логотипов агентств.
+      - Формулировки «NASA Confirmed», «Scientists Just Proved» и подобные — только
+        если ровно это утверждение есть в brief.md со ссылкой на источник.
+      - Гипотеза называется гипотезой: «may», «could», а не «confirmed».
+    motion_share: [0.10, 0.15]
+    title_templates:
+      - "[Object]: [Adjective Description]"
+      - "[Question Word] [Subject/Action]?"
+      - "[How/Why] [Subject] [Verb]"
+      - "[Subject] Just [Verb] [Discovery]"
+    hook_types:
+      - Невозможное открытие — то, чего по науке быть не должно
+      - Шокирующая цифра космического масштаба
+      - Антиутопический сценарий на другой планете
+      - Парадокс: произошло вопреки законам
+    kling_bias: high
+
+  disasters:
+    id: disasters
+    niche: disasters_survival
+    subniche: Инженерные катастрофы и отказы конструкций
+    voice_id: "N2lVS1w4EtoT3dr4eOWO"      # Callum — хрипловатый, тревожный
+    target_minutes: [12, 14]
+    visual_style: >-
+      Сток документальных кадров плюс программные схемы: разрезы конструкций,
+      последовательность отказа, графики нагрузок рисуются Remotion.
+    thumb_palette: ["#7A4B23", "#FFFFFF", "#1C6DD0"]   # коричневый, белый, синий
+    thumb_rules:
+      big_text: true
+      max_words: 4
+      faces: false
+      news_chrome: false
+    honesty_rules:
+      - Без gore: ни крови, ни тел, ни кадров гибели людей — ни в ролике, ни на обложке.
+      - Фокус на инженерной причине отказа, а не на жертвах.
+    motion_share: [0.10, 0.15]
+    title_templates:
+      - "[Number] [Unit] [Object]: [Description]"
+      - "The [Superlative] [Object] [Description]"
+      - "What Went Wrong on [Object]"
+      - "[Object]: [Claim] Than We Thought"
+      - "[Number] [Objects] That Caused [Result]"
+    hook_types:
+      - Шокирующая цифра масштаба разрушений
+      - Сцена-загадка: необъяснимый отказ конструкции
+      - Отрицание общего мнения о безопасности проекта
+      - Астрономическая сумма проекта как контраст провалу
+    kling_bias: low
