@@ -1,0 +1,70 @@
+# Генеративное видео: что доступно по API (замер 2026-09-10)
+
+Стадия `generate` (после `collage`, до `assets`), провайдеры в `pipeline/sources/genvideo.py`,
+правила и лимит — `defaults.gen` / `channels.<канал>.gen` в `config/channels.yaml`,
+`--max-gen-cost EUR` в CLI (дефолт 120, 0 = выключить). Стоимость каждого клипа — в `cost`
+(стадия `generate`, `provider:model`, EUR в detail) и в паспорт; список клипов — `generate.json`.
+
+## Провайдеры
+
+| провайдер | модель (id в API) | режимы | длина | $/с | 6 с | звук | статус у нас |
+|---|---|---|---|---:|---:|---|---|
+| Gemini API | `veo-3.1-generate-preview` | t2v, i2v, reference images (до 3, только 8 с), first/last frame, extend | 4/6/8 с, 720p/1080p (1080p только 8 с) | 0.40 (4k 0.60) | $2.40 | да, нативный | ключа нет (`GOOGLE_API_KEY`) |
+| Gemini API | `veo-3.1-fast-generate-preview` | то же | то же | 0.10 (1080p 0.12) | $0.60 | да | ключа нет — **дефолт для t2v** |
+| Gemini API | `veo-3.1-lite-generate-preview` | t2v/i2v | 720p/1080p | 0.05 (1080p 0.08) | $0.30 | да | ключа нет |
+| Runway API | `gen4.5` | t2v, i2v | 2–10 с, 1280:720 / 1920:1080 | 0.12 (12 credits) | $0.60 (5 с) | нет | ключа нет (`RUNWAY_API_KEY`) — **дефолт для i2v** |
+| Runway API | `gen4_turbo` | i2v | 5/10 с | 0.05 | $0.25 | нет | — |
+| Runway API | `veo3.1` / `veo3.1_fast` (прокси) | t2v | 8 с | 0.40 / 0.15 | — | да | запасной путь к Veo без Google-ключа |
+| Kling | `kling-v2-1-master` (+ v2-5-turbo, v2-6, v3 — имена принимаются) | t2v, i2v | 5/10 с | ~0.056 std / 0.098 pro | $0.28 (5 с) | нет | ключ принят, **баланс 0** («Account balance not enough») |
+
+Источники цен: [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing),
+[Veo docs](https://ai.google.dev/gemini-api/docs/veo), [Runway pricing](https://docs.dev.runwayml.com/guides/pricing/),
+[Runway models](https://docs.dev.runwayml.com/guides/models/). Veo не в free tier; в EU/UK для
+`person_generation` разрешён только `allow_adult`. Runway: минимальное пополнение $10, 1 credit = $0.01.
+
+**Бюджет.** При 12-минутном ролике под библию: i2v 15% ≈ 108 с ≈ 22 клипа × 5 с × $0.12 = $13;
+t2v 12% ≈ 86 с ≈ 15 клипов × 6 с × $0.10 (Veo fast) = $9 — итого ≈ $22 ≈ 20 EUR за ролик на fast-моделях;
+на Veo standard t2v — +$27. Лимит 120 EUR остаётся с большим запасом; 150 EUR нужен только если
+брать Veo standard 1080p на всё.
+
+## Правила выбора (config `gen.rules`)
+
+- (а) есть реальное фото субъекта (коллаж в режиме `photo`: здание, место, предмет) → Runway `gen4.5` image-to-video, движение камеры, 4–6 с. Промпт — только камера и свет: сам объект уже на фото, ничего не «дорисовываем».
+- (б) реального нет, сцена атмосферная/обобщённая → Veo 3.1 fast text-to-video со звуком; ambient в миксе на −18 dB (~12% громкости, `gen.ambient_gain_db`), под голосом дополнительно не дакается — уровень и так фоновый.
+- (в) провайдер упал / нет ключа → следующий по `fallback_order` (`veo → runway → kling`; для i2v `runway → kling → veo`).
+- Никогда: узнаваемые объекты, здания конкретных компаний, реальные люди, читаемый текст, логотипы. Каждый промпт переписывается Haiku в обобщённую сцену (`sanitize_prompt`), затем проверяется regex по именам субъектов и людей из shotlist/brief и по словам logo/wordmark; при попадании кадр в генеративку не идёт.
+- Стиль — один `style_prompt` на канал (business: документальный реализм, приглушённая profit-and-loss палитра, естественный свет, лёгкое зерно 35 мм, без текста/лиц) + `negative_prompt` + `reference_frames` (1–3 утверждённых кадра для Veo — заполняются после первых тестов).
+
+## Новый бюджет типов кадров (`defaults.shot_budget_gen`, доли времени)
+
+| тип | доля | откуда |
+|---|---:|---|
+| screens (скриншоты статей, fair use ≤4 с) | 31% | article-screenshot у Mondo 31% |
+| collage (реальные CC-фото/вырезки) | 15% | часть real-footage + cutout-collage |
+| i2v (реальное фото → движение камеры) | 15% | заменяет real-footage |
+| t2v (Veo, атмосферные сцены) | 12% | заменяет stock 12% и ai-image 4% |
+| card (BrandCard / Callout / quote) | 12% | logo-card 7% + text-kinetic 5% |
+| motion (Chart / Counter) | 6% | chart-graph 4% + запас под инфографику |
+| stock | ≤5% | только текстура |
+
+Включается на канале `gen.enabled: true` (business — включено), в shotlist кадры получают `gen: i2v|t2v`,
+стадия `generate` рендерит их в пределах лимита; неудачные возвращаются к исходному типу.
+
+## Тест качества
+
+`scripts/gen_test.py [veo_fast|veo|runway_t2v|runway_i2v|kling]` — один промпт (цех автозавода на рассвете),
+клипы в `/mnt/d/youtube/output/_gen_tests/`, `cost.json` с ценой каждого. Сейчас: Veo и Runway — нет ключей,
+Kling — нет баланса. После заполнения `.env` запуск полного теста стоит ≈ $0.60 + $2.40 + $0.60 + $0.60 + $0.28 ≈ $4.5.
+
+## Тест 2026-09-10 (один промпт: цех автозавода на рассвете, `scripts/gen_test.py`)
+
+| клип | модель | длина | цена | время | впечатление |
+|---|---|---:|---:|---:|---|
+| `_gen_tests/veo_fast.mp4` | veo-3.1-fast-generate-preview, 720p | 6 с | $0.60 | 50 с | кино-свет, объём, звук цеха; люди идут к камере (промпт просил «от»); лучший баланс цена/качество — **дефолт t2v** |
+| `_gen_tests/veo_std.mp4` | veo-3.1-generate-preview, 720p | 6 с | $2.40 | 58 с | чище геометрия роботов, холоднее палитра; ×4 цена — только на хук |
+| `_gen_tests/runway_t2v.mp4` | gen4.5 text-to-video | 5 с | $0.60 | 127 с | картинка «игровая», больше деталей и меньше света; без звука |
+| `_gen_tests/runway_i2v.mp4` | gen4.5 image-to-video (CC-фото завода Такасаки) | 5 с | $0.60 | 97 с | чистая панорама по реальному фото, без дорисовки — **дефолт i2v** |
+| Kling | kling-v2-1-master | — | — | — | 429 Too Many Requests / баланс 0 — фолбэк не работает, пока не пополнить |
+
+Runway: баланс 1500 credits ($15), лимит 10 000 credits/мес. Gemini: ключ принят, Veo генерирует
+(list models через SDK падает «client has been closed» — косметика в `--check`, генерация не затронута).

@@ -4,6 +4,8 @@ import { BrandCard, brandSchema } from "./BrandCard";
 import { Chart, chartSchema } from "./Chart";
 import { Counter, counterSchema } from "./Counter";
 import { Callout, calloutSchema } from "./Callout";
+import { Collage } from "./Collage";
+import { PressCard } from "./PressCard";
 
 const W = 1920, H = 1080, FPS = 30;
 
@@ -23,6 +25,12 @@ export const Root: React.FC = () => (
     <Composition id="Counter" component={Counter} calculateMetadata={calc} durationInFrames={FPS * 4}
       fps={FPS} width={W} height={H}
       defaultProps={{ from: 0, to: 1000000, prefix: "$", suffix: "", label: "", palette: ["#D0021B", "#FFFFFF", "#111111"] }} />
+    <Composition id="Collage" component={Collage} calculateMetadata={calc} durationInFrames={FPS * 5}
+      fps={FPS} width={W} height={H}
+      defaultProps={{ cutout: "", text: "", sub: "", attribution: "", palette: ["#D0021B", "#FFFFFF", "#111111"], side: "right", objectScale: 1, portrait: false, mode: "cutout" }} />
+    <Composition id="PressCard" component={PressCard} calculateMetadata={calc} durationInFrames={FPS * 4}
+      fps={FPS} width={W} height={H}
+      defaultProps={{ shot: "", outlet: "", date: "", headline: "", palette: ["#D0021B", "#FFFFFF", "#111111"] }} />
     <Composition id="Callout" component={Callout} calculateMetadata={calc} durationInFrames={FPS * 3}
       fps={FPS} width={W} height={H}
       defaultProps={{ text: "", note: "", palette: ["#D0021B", "#FFFFFF", "#111111"] }} />

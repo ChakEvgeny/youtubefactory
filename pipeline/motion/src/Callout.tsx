@@ -1,5 +1,6 @@
 import React from "react";
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { Frame } from "./Frame";
 
 export const calloutSchema = {};
 
@@ -12,7 +13,7 @@ export const Callout: React.FC<{ text: string; note?: string; palette: string[] 
     const wipe = interpolate(frame / fps, [0.2, 1.0], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
     return (
-      <AbsoluteFill style={{ backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
+      <Frame palette={palette}><AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
         <div style={{
           transform: `scale(${0.9 + s * 0.1})`, opacity: Math.min(s * 1.3, 1),
           maxWidth: width * 0.78, borderLeft: `${height * 0.02}px solid ${accent}`,
@@ -34,6 +35,6 @@ export const Callout: React.FC<{ text: string; note?: string; palette: string[] 
             }}>{note}</div>
           ) : null}
         </div>
-      </AbsoluteFill>
+      </AbsoluteFill></Frame>
     );
   };

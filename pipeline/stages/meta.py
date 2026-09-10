@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import anthropic
 
@@ -40,14 +41,27 @@ def run_stage(cfg, ctx, cost) -> dict:
             seen.add(s["url"])
             uniq.append(s)
 
+    # скелеты заголовков из замера референса (config/title_skeletons_<channel>.yaml)
+    import yaml
+    skp = Path(cfg.root) / "config" / f"title_skeletons_{cfg.channel_name}.yaml" if hasattr(cfg, "root") \
+        else Path(__file__).resolve().parents[2] / "config" / f"title_skeletons_{cfg.channel_name}.yaml"
+    skel = yaml.safe_load(skp.read_text(encoding="utf-8")) if skp.exists() else None
+    if skel:
+        masks = "\n".join(f"- {s['mask']}   [{s['family']}, ×{s['count']}, avg {s['avg_views']:,} views; e.g. «{s['examples'][0]}»]"
+                          for s in skel["skeletons"])
+        templates_block = ("МАСКИ ЗАГОЛОВКОВ (замер референса; каждый заголовок — ровно одна маска, плейсхолдеры "
+                           "{BRAND}/{PERSON}/{MONEY}/{NUMBER}/{THING}/{VERB} заполняются фактами из брифа; верни поле mask у каждого):\n"
+                           + masks + "\nПРАВИЛА:\n" + "\n".join("- " + r for r in skel.get("rules", [])))
+    else:
+        templates_block = "ШАБЛОНЫ ЗАГОЛОВКОВ:\n" + "\n".join("- " + t for t in ch["title_templates"])
     sysmsg = (
-        "Ты пишешь упаковку для ролика YouTube на английском. Заголовки строго по шаблонам "
+        "Ты пишешь упаковку для ролика YouTube на английском. Заголовки строго по маскам/шаблонам "
         "ниши, каждый ≤ 70 символов, без кликбейта, которого нет в ролике. Описание — "
         "3-5 предложений живым языком, без «in this video». Теги — 15 штук, нижний регистр, "
         "без решёток.\nОтвечай ТОЛЬКО JSON без markdown: "
-        "{\"titles\":[\"...\",\"...\",\"...\"],\"description\":\"...\",\"tags\":[\"...\"]}")
+        "{\"titles\":[\"...\",\"...\",\"...\"],\"title_masks\":[\"маска каждого\"],\"description\":\"...\",\"tags\":[\"...\"]}")
     prompt = (f"НИША: {ch['niche']} / {ch['subniche']}\n"
-              f"ШАБЛОНЫ ЗАГОЛОВКОВ:\n" + "\n".join("- " + t for t in ch["title_templates"]) +
+              + templates_block +
               f"\n\nУГОЛ: {brief.get('angle','')}\n\nНАЧАЛО СЦЕНАРИЯ:\n{script}")
     r = client.messages.create(model=MODEL, max_tokens=2000, system=sysmsg,
                                messages=[{"role": "user", "content": prompt}])
@@ -59,6 +73,28 @@ def run_stage(cfg, ctx, cost) -> dict:
         lines.append(f"{c['t']//60}:{c['t']%60:02d} {c['scene']}")
     lines += ["", "Sources:"]
     lines += [f"- {s['title'] or s['url']}: {s['url']}" for s in uniq[:20]]
+    lp = ctx / "sources_log.json"
+    if lp.exists():
+        log = json.loads(lp.read_text(encoding="utf-8"))
+        imgs = [x for x in log if x.get("stage") == "collage" and x.get("license")]
+        press = [x for x in log if x.get("stage") == "screens" and x.get("url")]
+        if imgs:
+            lines += ["", "Images (Wikimedia Commons):"]
+            seen = set()
+            for x in imgs:
+                k = x["page"]
+                if k in seen:
+                    continue
+                seen.add(k)
+                lines.append(f"- {x['title'][5:80]} — {x['author'][:40]}, {x['license']}: {x['page']}")
+        if press:
+            lines += ["", "Press excerpts shown under fair use for commentary:"]
+            seen = set()
+            for x in press:
+                if x["url"] in seen:
+                    continue
+                seen.add(x["url"])
+                lines.append(f"- {x['outlet']}, {x.get('date','')}: {x['url']}")
     lines += ["", "Tags: " + ", ".join(data.get("tags", []))]
     (ctx / "meta.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     data["chapters"] = chs

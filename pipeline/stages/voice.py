@@ -13,7 +13,9 @@ API = "https://api.elevenlabs.io/v1"
 MODEL = "eleven_v3"
 # $/1000 символов, тариф Creator; уточняется при первом вызове
 PRICE_PER_1K_CHARS = 0.15
-SCENE_RE = re.compile(r"^\[SCENE:.+?\]\s*$", re.IGNORECASE | re.MULTILINE)
+# ВСЯ разметка, а не только SCENE: строки [MOTION: ...] раньше попадали в озвучку
+# и диктор читал вслух «counter from=0 to=4000 label=...».
+MARK_RE = re.compile(r"^\[(?:SCENE|MOTION|BEAT):.+?\]\s*$", re.IGNORECASE | re.MULTILINE)
 
 
 def _req(path: str, key: str, payload=None, method="GET"):
@@ -48,8 +50,17 @@ def list_models(key: str) -> list[dict]:
     return _req("/models", key)
 
 
+def quota(key: str) -> dict:
+    """Остаток символов. ElevenLabs на исчерпанной квоте отвечает 401, а не 429,
+    поэтому проверяем заранее — иначе ошибка выглядит как неверный ключ."""
+    s = _req("/user/subscription", key)
+    used, lim = s.get("character_count") or 0, s.get("character_limit") or 0
+    return {"tier": s.get("tier"), "used": used, "limit": lim, "left": max(lim - used, 0),
+            "reset_unix": s.get("next_character_count_reset_unix")}
+
+
 def split_paragraphs(script: str, max_chars: int = 2500) -> list[str]:
-    text = SCENE_RE.sub("", script)
+    text = MARK_RE.sub("", script)
     paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
     chunks, cur = [], ""
     for p in paras:
@@ -63,9 +74,10 @@ def split_paragraphs(script: str, max_chars: int = 2500) -> list[str]:
     return chunks
 
 
-def synth_chunk(key: str, voice_id: str, text: str, cache: Cache) -> dict:
+def synth_chunk(key: str, voice_id: str, text: str, cache: Cache,
+                speed: float = 1.0, stability: float = 0.5, style: float = 0.0) -> dict:
     """Возвращает {'mp3': Path, 'alignment': {...}} с кэшем по hash текста."""
-    h = sha1(voice_id, MODEL, text)
+    h = sha1(voice_id, MODEL, text, speed, stability, style)
     mp3 = cache.blob_path("tts", h, ".mp3")
     meta = cache.get_json("tts", h, ttl_hours=None)
     if mp3.exists() and meta:
@@ -73,7 +85,8 @@ def synth_chunk(key: str, voice_id: str, text: str, cache: Cache) -> dict:
                 "chars": len(text)}
 
     payload = {"text": text, "model_id": MODEL,
-               "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}}
+               "voice_settings": {"stability": stability, "similarity_boost": 0.75,
+                                  "style": style, "speed": speed}}
     url = f"{API}/text-to-speech/{voice_id}/with-timestamps"
     req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST",
                                  headers={"xi-api-key": key, "Content-Type": "application/json"})
@@ -106,7 +119,62 @@ def words_from_alignment(align: dict, offset: float) -> list[dict]:
     if cur and st is not None:
         words.append({"word": cur, "start": round(st + offset, 3),
                       "end": round(ends[-1] + offset, 3)})
-    return words
+    # аудио-теги ElevenLabs v3 не звучат — из таймкодов их выкидываем
+    tag = re.compile(r"^\[(?:pause|thoughtful|firmly|quietly|sighs)\]$", re.I)
+    return [w for w in words if not tag.match(w["word"])]
+
+
+def trim_silence(parts: list[Path], words: list[dict], out: Path,
+                 sil_max: float, sil_to: float, xfade_ms: int) -> tuple[list[dict], float]:
+    """Склейка чанков с кроссфейдом + сжатие длинных пауз.
+    Таймкоды слов пересчитываются, иначе кадры и motion разъезжаются."""
+    # 1) склейка с кроссфейдом между чанками
+    joined = out.parent / "_voice_joined.mp3"
+    if len(parts) == 1:
+        run(["ffmpeg", "-y", "-v", "error", "-i", str(parts[0]), "-c", "copy", str(joined)])
+    else:
+        ins, filt, prev = [], [], "[0:a]"
+        for i, pth in enumerate(parts):
+            ins += ["-i", str(pth)]
+        for i in range(1, len(parts)):
+            lbl = f"[a{i}]"
+            filt.append(f"{prev}[{i}:a]acrossfade=d={xfade_ms/1000:.3f}:c1=tri:c2=tri{lbl}")
+            prev = lbl
+        run(["ffmpeg", "-y", "-v", "error", *ins, "-filter_complex", ";".join(filt),
+             "-map", prev, str(joined)])
+
+    # 2) какие куски оставляем: паузу длиннее sil_max режем до sil_to
+    keep, cuts, prev_end = [], [], 0.0
+    for w in words:
+        gap = w["start"] - prev_end
+        if gap > sil_max and prev_end > 0:
+            keep.append((prev_end - 0.0, prev_end + sil_to))
+            cuts.append((prev_end + sil_to, w["start"]))
+        prev_end = w["end"]
+    if not cuts:
+        joined.replace(out)
+        return words, 0.0
+
+    segs, pos = [], 0.0
+    for a, b in cuts:
+        segs.append((pos, a))
+        pos = b
+    total = max(w["end"] for w in words) + 1.0
+    segs.append((pos, total))
+
+    filt = "".join(f"[0:a]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS[s{i}];"
+                   for i, (a, b) in enumerate(segs))
+    filt += "".join(f"[s{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=0:a=1[o]"
+    run(["ffmpeg", "-y", "-v", "error", "-i", str(joined), "-filter_complex", filt,
+         "-map", "[o]", str(out)], timeout=1800)
+    joined.unlink(missing_ok=True)
+
+    # 3) пересчёт таймкодов: вычитаем вырезанное, что было раньше слова
+    removed = [(a, b - a) for a, b in cuts]
+    def shift(t):
+        return round(t - sum(d for a, d in removed if a <= t), 3)
+    new = [{"word": w["word"], "start": shift(w["start"]), "end": shift(w["end"])} for w in words]
+    return new, round(sum(d for _, d in removed), 2)
 
 
 def run_stage(cfg, ctx, cost) -> dict:
@@ -119,9 +187,22 @@ def run_stage(cfg, ctx, cost) -> dict:
     script = (ctx / "script.md").read_text(encoding="utf-8")
     chunks = split_paragraphs(script)
 
+    # сколько реально придётся оплатить: чанки из кэша не тарифицируются
+    speed = float(cfg.defaults.get("narration_speed", 1.0))
+    stab = float(cfg.defaults.get("voice_stability", 0.5))
+    style = float(cfg.defaults.get("voice_style", 0.0))
+    need = sum(len(c) for c in chunks
+               if not cache.blob_path("tts", sha1(voice_id, MODEL, c, speed, stab, style), ".mp3").exists())
+    q = quota(key)
+    if need > q["left"]:
+        raise SystemExit(
+            f"ElevenLabs: не хватает символов. Тариф «{q['tier']}», "
+            f"осталось {q['left']:,} из {q['limit']:,}, сценарию нужно {need:,}. "
+            f"Не хватает {need - q['left']:,}. Нужен план побольше или ждать сброса лимита.")
+
     parts, words, offset, chars, cached_n = [], [], 0.0, 0, 0
     for i, ch_text in enumerate(chunks):
-        res = synth_chunk(key, voice_id, ch_text, cache)
+        res = synth_chunk(key, voice_id, ch_text, cache, speed, stab, style)
         dur = _dur(res["mp3"])
         words += words_from_alignment(res["alignment"], offset)
         offset += dur
@@ -129,20 +210,36 @@ def run_stage(cfg, ctx, cost) -> dict:
         chars += res["chars"]
         cached_n += int(res["cached"])
 
-    lst = ctx / "voice_parts.txt"
-    lst.write_text("\n".join(f"file '{p}'" for p in parts), encoding="utf-8")
     out = ctx / "voice.mp3"
-    run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(lst),
-         "-c", "copy", str(out)])
+    d = cfg.defaults
+    words, removed = trim_silence(parts, words, out,
+                                  float(d.get("silence_max", 0.7)),
+                                  float(d.get("silence_to", 0.35)),
+                                  int(d.get("chunk_crossfade_ms", 50)))
+    # ускорение темпа: atempo не меняет высоту тона
+    tempo = float(d.get("narration_tempo", 1.0))
+    if abs(tempo - 1.0) > 0.005:
+        sped = ctx / "_voice_tempo.mp3"
+        run(["ffmpeg", "-y", "-v", "error", "-i", str(out), "-filter:a",
+             f"atempo={tempo:.3f}", str(sped)], timeout=1800)
+        sped.replace(out)
+        words = [{"word": x["word"], "start": round(x["start"] / tempo, 3),
+                  "end": round(x["end"] / tempo, 3)} for x in words]
+    from ..util import ffprobe_duration as _dur2
+    final = _dur2(out)
     (ctx / "timestamps.json").write_text(
-        json.dumps({"words": words, "duration": offset, "voice_id": voice_id,
-                    "model": MODEL}, ensure_ascii=False), encoding="utf-8")
+        json.dumps({"words": words, "duration": final, "voice_id": voice_id,
+                    "model": MODEL, "speed": speed, "tempo": tempo, "trimmed_sec": removed},
+                   ensure_ascii=False), encoding="utf-8")
 
-    billed = chars - sum(len(c) for i, c in enumerate(chunks) if i < cached_n)
-    cost.add("voice", MODEL, max(billed, 0) / 1000 * PRICE_PER_1K_CHARS,
-             f"{chars} симв., из кэша чанков {cached_n}/{len(chunks)}")
-    return {"chunks": len(chunks), "cached": cached_n, "chars": chars,
-            "duration_sec": round(offset, 1), "words": len(words)}
+    cost.add("voice", MODEL, need / 1000 * PRICE_PER_1K_CHARS,
+             f"{chars} симв., оплачено {need}, из кэша {cached_n}/{len(chunks)} чанков")
+    gaps = sum(1 for i in range(1, len(words))
+               if words[i]["start"] - words[i - 1]["end"] > float(d.get("silence_max", 0.7)))
+    return {"chunks": len(chunks), "cached": cached_n, "chars": chars, "billed": need,
+            "speed": speed, "tempo": tempo, "raw_sec": round(offset, 1), "duration_sec": round(final, 1),
+            "trimmed_sec": removed, "long_pauses_left": gaps, "words": len(words),
+            "wpm": round(len(words) / (final / 60)) if final else 0}
 
 
 def _dur(p: Path) -> float:

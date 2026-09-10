@@ -22,15 +22,26 @@ SYSTEM = (
 )
 
 
-def run(cfg, ctx, topic: str, cost) -> dict:
+def run(cfg, ctx, topic: str, cost, angle: str | None = None,
+        research: str | None = None, augment: bool = False) -> dict:
     client = anthropic.Anthropic()
     ch = cfg.channel
+    prev = {}
+    if augment and (ctx / "brief.json").exists():
+        prev = json.loads((ctx / "brief.json").read_text(encoding="utf-8"))
     prompt = (
         f"ТЕМА: {topic}\n"
         f"КАНАЛ: {ch['niche']} / {ch['subniche']}\n"
         f"ЦЕЛЕВАЯ ДЛИНА РОЛИКА: {ch['target_minutes'][0]}-{ch['target_minutes'][1]} минут "
         f"(значит фактуры нужно на связный сюжет такой длины).\n"
-        "Собери фактуру по правилам из системного промпта."
+        + (f"ЗАДАННЫЙ УГОЛ ПОДАЧИ (следуй ему, фактуру ищи под него):\n{angle}\n\n"
+           if angle else "")
+        + (f"ЦЕЛЕВОЙ ЗАПРОС НА ДОБОР ФАКТУРЫ (ищи именно это):\n{research}\n\n"
+           if research else "")
+        + ("УЖЕ СОБРАНО, НЕ ПОВТОРЯЙ:\n"
+           + "\n".join("- " + f["fact"][:110] for f in prev.get("facts", [])) + "\n\n"
+           if prev.get("facts") else "")
+        + "Собери фактуру по правилам из системного промпта."
     )
     resp = client.messages.create(
         model=MODEL,
@@ -45,8 +56,17 @@ def run(cfg, ctx, topic: str, cost) -> dict:
 
     facts = [f for f in data.get("facts", []) if (f.get("source_url") or "").startswith("http")]
     dropped = len(data.get("facts", [])) - len(facts)
+    added = len(facts)
+    if prev.get("facts"):
+        seen = {(f.get("source_url"), (f.get("fact") or "")[:60]) for f in prev["facts"]}
+        fresh = [f for f in facts if (f.get("source_url"), (f.get("fact") or "")[:60]) not in seen]
+        added = len(fresh)
+        facts = prev["facts"] + fresh
+        data["open_questions"] = (data.get("open_questions") or [])
     data["facts"] = facts
     data["dropped_without_source"] = dropped
+    if angle or prev.get("angle"):
+        data["angle"] = angle or prev.get("angle")          # заданный угол приоритетнее выбранного моделью
 
     md = [f"# Brief — {topic}", "", f"**Угол подачи:** {data.get('angle','')}", "",
           f"Фактов с источником: **{len(facts)}**"
@@ -62,4 +82,5 @@ def run(cfg, ctx, topic: str, cost) -> dict:
 
     (ctx / "brief.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     (ctx / "brief.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    return {"facts": len(facts), "dropped": dropped, "angle": data.get("angle", "")}
+    return {"facts": len(facts), "added": added, "dropped": dropped,
+            "angle": data.get("angle", "")[:80]}

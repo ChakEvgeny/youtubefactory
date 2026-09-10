@@ -24,6 +24,15 @@ SYSTEM = """Ты пишешь сценарий закадрового текст
   Ничего сверх BRIEF не выдумывай.
 - Разговорный английский: сокращения, короткие предложения, обращение на «you».
 
+РАЗМЕТКА РИТМА. Перед каждым смысловым фрагментом ставь отдельной строкой:
+[BEAT: hook|story|quote|turn|fact]
+  hook  — первые ~15 секунд, максимальный темп;
+  story — человеческая история, живая сцена с людьми;
+  quote — прямая речь, цитата с именем;
+  turn  — поворот сюжета, смена главы;
+  fact  — ключевая цифра или вывод.
+Фрагментов на ролик 12-20. Действует до следующего [BEAT: ...].
+
 РАЗМЕТКА СЦЕН. Каждые 8-20 секунд речи вставляй отдельной строкой одно из двух:
 
 [SCENE: что в кадре | stock query на английском 2-5 слов | kling: yes/no]
@@ -41,7 +50,7 @@ MOTION уместен там, где в тексте звучит число, д
 Никакого markdown, никаких заголовков, никаких пояснений до или после."""
 
 
-def run(cfg, ctx, cost) -> dict:
+def run(cfg, ctx, cost, notes: str | None = None) -> dict:
     brief = json.loads((ctx / "brief.json").read_text(encoding="utf-8"))
     ch = cfg.channel
     anti = cfg.defaults["anti_slop"]
@@ -79,14 +88,18 @@ def run(cfg, ctx, cost) -> dict:
 
 BRIEF — только эти факты, ничего сверх них:
 {facts}
-
+{("" if not notes else chr(10) + "ОТДЕЛЬНЫЕ ТРЕБОВАНИЯ К ЭТОЙ ВЕРСИИ (важнее общих правил):" + chr(10) + notes + chr(10))}
 Напиши сценарий."""
 
     resp = client_call(prompt)
     text, usage = resp
     cost.add("script", MODEL, claude_cost(MODEL, usage), f"~{words} слов")
 
-    (ctx / "script.md").write_text(text, encoding="utf-8")
+    dst = ctx / "script.md"
+    if dst.exists():                       # предыдущая версия не теряется
+        n = len(list(ctx.glob("script.v*.md"))) + 1
+        (ctx / f"script.v{n}.md").write_text(dst.read_text(encoding="utf-8"), encoding="utf-8")
+    dst.write_text(text, encoding="utf-8")
     scenes = parse_scenes(text)
     (ctx / "scenes.json").write_text(json.dumps(scenes, ensure_ascii=False, indent=1),
                                      encoding="utf-8")
@@ -116,7 +129,113 @@ SCENE_RE = re.compile(r"^\[SCENE:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*kling:\s*(yes|no)\
                       re.IGNORECASE | re.MULTILINE)
 MOTION_RE = re.compile(r"^\[MOTION:\s*(brand|chart|counter|callout)\s*\|\s*(.+?)\s*\]\s*$",
                        re.IGNORECASE | re.MULTILINE)
-ANY_MARK_RE = re.compile(r"^\[(?:SCENE|MOTION):.+?\]\s*$", re.IGNORECASE | re.MULTILINE)
+BEAT_RE = re.compile(r"^\[BEAT:\s*(hook|story|quote|turn|fact)\s*\]\s*$",
+                     re.IGNORECASE | re.MULTILINE)
+ANY_MARK_RE = re.compile(r"^\[(?:SCENE|MOTION|BEAT):.+?\]\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+REMARK_SYSTEM = """Ты расставляешь разметку ритма в готовом сценарии.
+
+ЖЁСТКОЕ ПРАВИЛО: текст сценария не меняется НИ ОДНИМ СЛОВОМ. Ты только вставляешь
+новые строки [BEAT: ...] между абзацами. Существующие строки [SCENE: ...] и
+[MOTION: ...] оставляешь на своих местах без изменений.
+
+Перед каждым смысловым фрагментом вставь отдельной строкой:
+[BEAT: hook|story|quote|turn|fact]
+  hook  — открытие ролика, первые ~15 секунд;
+  story — человеческая история, живая сцена с конкретными людьми;
+  quote — прямая речь, цитата с именем и должностью;
+  turn  — поворот сюжета, переход к новой главе;
+  fact  — ключевая цифра, сравнение, вывод.
+
+Фрагментов должно получиться 12-20. Первый обязательно hook.
+Верни ПОЛНЫЙ текст сценария с добавленными строками, без markdown-ограждения,
+без пояснений до и после."""
+
+
+TAG_RE = re.compile(r"\[(?:pause|thoughtful|firmly|quietly|sighs)\]", re.IGNORECASE)
+
+TAGS_SYSTEM = """Ты расставляешь аудио-теги ElevenLabs v3 в готовом сценарии закадрового текста.
+
+ЖЁСТКОЕ ПРАВИЛО: слова сценария не меняются. Строки [SCENE: ...], [MOTION: ...],
+[BEAT: ...] не трогаются. Ты только:
+1) вставляешь теги ВНУТРИ абзацев речи: [pause] [thoughtful] [firmly] [quietly] [sighs];
+2) переводишь в ЗАГЛАВНЫЕ одно слово в предложении там, где нужна эмфаза.
+
+Лимиты:
+- не чаще одного тега на 2-3 предложения; ставить только в эмоциональных точках
+  (перед поворотом, перед цитатой, после сильной цифры) — не ради украшения;
+- [pause] — только перед поворотом или ключевой цифрой, максимум 6 на весь текст;
+- капс — не больше ОДНОГО слова в предложении, и не в каждом предложении:
+  по одному-два на абзац максимум, только на слове, которое несёт удар.
+Верни ПОЛНЫЙ текст без markdown-ограждения и без пояснений."""
+
+
+def remark_tags(cfg, ctx, cost) -> dict:
+    """Аудио-теги поверх готового текста: слова не трогаем, только теги и капс."""
+    client = anthropic.Anthropic()
+    script = (ctx / "script.md").read_text(encoding="utf-8")
+    with client.messages.stream(model=MODEL, max_tokens=32000, system=TAGS_SYSTEM,
+                                messages=[{"role": "user", "content": script}]) as st:
+        msg = st.get_final_message()
+    cost.add("script", MODEL, claude_cost(MODEL, msg.usage), "аудио-теги")
+    out = "".join(b.text for b in msg.content if b.type == "text").strip()
+
+    def bare(t):   # без разметки и без тегов, в нижнем регистре — сравниваем сами слова
+        return TAG_RE.sub("", ANY_MARK_RE.sub("", t)).lower().split()
+    a, b = bare(script), bare(out)
+    if a != b:
+        diff = sum(1 for x, y in zip(a, b) if x != y) + abs(len(a) - len(b))
+        if diff > 3:
+            return {"applied": False, "reason": f"слова изменились ({diff} расхождений)"}
+    tags = TAG_RE.findall(out)
+    sents = re.split(r"(?<=[.!?])\s+", ANY_MARK_RE.sub("", out))
+    caps = sum(1 for sn in sents if len(re.findall(r"\b[A-Z]{3,}\b", sn)) > 1)
+    k = len(list(ctx.glob("script.v*.md"))) + 1
+    (ctx / f"script.v{k}.md").write_text(script, encoding="utf-8")
+    (ctx / "script.md").write_text(out, encoding="utf-8")
+    (ctx / "scenes.json").write_text(json.dumps(parse_scenes(out), ensure_ascii=False, indent=1),
+                                     encoding="utf-8")
+    import collections
+    return {"applied": True, "tags": len(tags), "by_tag": dict(collections.Counter(t.lower() for t in tags)),
+            "sentences": len(sents), "sentences_with_2plus_caps": caps}
+
+
+def remark_beats(cfg, ctx, cost) -> dict:
+    """Разметка BEAT поверх готового текста: слова не трогаем."""
+    client = anthropic.Anthropic()
+    script = (ctx / "script.md").read_text(encoding="utf-8")
+    with client.messages.stream(model=MODEL, max_tokens=32000, system=REMARK_SYSTEM,
+                                messages=[{"role": "user", "content": script}]) as st:
+        msg = st.get_final_message()
+    cost.add("script", MODEL, claude_cost(MODEL, msg.usage), "разметка BEAT")
+    out = "".join(b.text for b in msg.content if b.type == "text").strip()
+
+    before = spoken_words(script)
+    after = spoken_words(out)
+    if abs(after - before) > max(8, before * 0.01):
+        return {"applied": False, "reason": f"текст изменился: было {before} слов, стало {after}"}
+
+    k = len(list(ctx.glob("script.v*.md"))) + 1
+    (ctx / f"script.v{k}.md").write_text(script, encoding="utf-8")
+    (ctx / "script.md").write_text(out, encoding="utf-8")
+    (ctx / "scenes.json").write_text(json.dumps(parse_scenes(out), ensure_ascii=False, indent=1),
+                                     encoding="utf-8")
+    beats = [m.group(1).lower() for m in BEAT_RE.finditer(out)]
+    import collections
+    return {"applied": True, "beats": len(beats), "by_type": dict(collections.Counter(beats)),
+            "words_before": before, "words_after": after}
+
+
+def beat_at(text: str, pos: int) -> str:
+    """Тип фрагмента, действующий в этой позиции текста."""
+    cur = "exposition"
+    for m in BEAT_RE.finditer(text):
+        if m.start() <= pos:
+            cur = m.group(1).lower()
+        else:
+            break
+    return cur
 
 
 def parse_scenes(text: str) -> list[dict]:
@@ -132,6 +251,7 @@ def parse_scenes(text: str) -> list[dict]:
     items.sort(key=lambda x: x["char_pos"])
     for i, it in enumerate(items):
         it["idx"] = i
+        it["beat"] = beat_at(text, it["char_pos"])
     return items
 
 

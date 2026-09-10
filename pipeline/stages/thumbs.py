@@ -25,16 +25,34 @@ def best_frames(video: Path, out_dir: Path, n: int = 3) -> list[Path]:
     return frames
 
 
+def luma(img: Path) -> float:
+    """Средняя яркость кадра 0..255 через signalstats (YAVG)."""
+    p = run(["ffmpeg", "-v", "info", "-i", str(img), "-vf", "signalstats,metadata=print:file=-",
+             "-f", "null", "-"], check=False)
+    import re as _re
+    m = _re.findall(r"YAVG=([\d.]+)", p.stdout or "")
+    return float(m[-1]) if m else 128.0
+
+
 def draw_text(bg: Path, text: str, palette: list[str], out: Path, w=1280, h=720):
-    """Текст ≤4 слов крупно, цвет из палитры канала, плашка для контраста."""
-    fg = palette[1] if len(palette) > 1 else "#FFFFFF"
-    box = palette[0] if palette else "#000000"
+    """Текст ≤4 слов крупно. Плашка подбирается по яркости фона:
+    тёмный кадр -> светлая плашка с тёмным текстом, светлый -> наоборот.
+    Раньше плашка всегда была palette[0] (красная) с белым текстом, и на
+    тёмных кадрах проверка читаемости браковала 2 из 3 вариантов."""
+    accent = palette[0] if palette else "#D0021B"
+    dark_bg = luma(bg) < 110
+    if dark_bg:
+        box, fg = "#F4F4F2", "#111111"
+    else:
+        box, fg = "#111111", "#FFFFFF"
     safe = text.upper().replace("'", "").replace(":", "")
     fs = int(h * (0.20 if len(safe) <= 14 else 0.14 if len(safe) <= 24 else 0.10))
+    # акцентная полоса канала под плашкой — узнаваемость без чужих логотипов
     vf = (f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},"
+          f"drawbox=x=0:y={int(h*0.86)}:w={w}:h={int(h*0.02)}:color={accent}@0.95:t=fill,"
           f"drawtext=text='{safe}':fontcolor={fg}:fontsize={fs}:"
-          f"box=1:boxcolor={box}@0.72:boxborderw=28:"
-          f"x=(w-text_w)/2:y=h-text_h-{int(h*0.12)}")
+          f"box=1:boxcolor={box}@0.90:boxborderw=30:"
+          f"x=(w-text_w)/2:y=h-text_h-{int(h*0.14)}")
     run(["ffmpeg", "-y", "-v", "error", "-i", str(bg), "-vf", vf, "-frames:v", "1",
          "-q:v", "2", str(out)])
 

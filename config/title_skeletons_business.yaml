@@ -1,0 +1,183 @@
+channel: business
+measured_on: 'top-20 по просмотрам: Mondo Startups (12 мес) + Logically Answered (12 мес)'
+rules:
+- 'Заголовок ролика строится ТОЛЬКО по одной из масок ниже: плейсхолдеры заполняются фактами из brief.md.'
+- '{VERB} — только глаголы, которые подтверждает бриф (Lost/Killed/Ruined требуют факта краха, не прогноза).'
+- Число в заголовке — только из брифа с источником.
+- Длина ≤ 70 символов; капс — не больше одного слова.
+- 'Число в заголовке ({MONEY}/{NUMBER}) — предпочтительно, где есть подтверждённая сумма или доля: у LA заголовки с числом
+  306k против 200k просмотров.'
+stats:
+  titles: 40
+  with_number: 9
+  number_vs_views_by_channel:
+    mondo_startups:
+      with_number:
+      - 0
+      - 0
+      without_number:
+      - 60000
+      - 20
+    logically_answered:
+      with_number:
+      - 1100000
+      - 9
+      without_number:
+      - 646000
+      - 11
+  median_len_chars: 39
+  with_ellipsis: 18
+  with_parenthesis: 2
+families:
+- family: misc
+  count: 8
+  avg_views: 441962
+  masks:
+  - '{THING}'
+- family: backfires
+  count: 6
+  avg_views: 668000
+  masks:
+  - When {THING} Backfires...
+- family: financial_loss
+  count: 5
+  avg_views: 945400
+  masks:
+  - 'From {MONEY} To {STATE}: How {BRAND} Lost Everything'
+- family: thought_were
+  count: 4
+  avg_views: 812500
+  masks:
+  - '{BRAND} Thought They Were {BRAND}...Got A Harsh Reality Check'
+- family: death
+  count: 4
+  avg_views: 343000
+  masks:
+  - The {ADJECTIVE} Death of {BRAND}
+- family: collapse
+  count: 3
+  avg_views: 246666
+  masks:
+  - '{BRAND} Is {VERB_ING}...'
+- family: lost_war
+  count: 3
+  avg_views: 94500
+  masks:
+  - How {BRAND} Lost the {THING} War
+- family: dream_dead
+  count: 3
+  avg_views: 52900
+  masks:
+  - '{BRAND}''s {THING} {NOUN} Is Dead'
+- family: finally_deserved
+  count: 2
+  avg_views: 1200000
+  masks:
+  - '{BRAND} Is (Finally) {VERB_ING} What They Deserve...'
+- family: destroyed_by
+  count: 2
+  avg_views: 84000
+  masks:
+  - How {BRAND} {VERB} {BRAND}
+skeletons:
+- mask: '{THING}'
+  family: misc
+  count: 8
+  avg_views: 441962
+  channels:
+  - logically_answered
+  - mondo_startups
+  examples:
+  - The Satisfying Death of Corporate Consulting
+  - 'Anduril: The Real Life SkyNet'
+  - Ground News is Hiding Something…
+- mask: When {THING} Backfires...
+  family: backfires
+  count: 6
+  avg_views: 668000
+  channels:
+  - logically_answered
+  - mondo_startups
+  examples:
+  - The AI Coding Boom Is Backfiring
+  - When Exploiting The Poor Backfires...Klarna's $40B Meltdown
+  - 'When Ignoring Your Customers Backfires: Porsche''s Broken Business'
+- mask: 'From {MONEY} To {STATE}: How {BRAND} Lost Everything'
+  family: financial_loss
+  count: 5
+  avg_views: 945400
+  channels:
+  - logically_answered
+  examples:
+  - 'From $10 Billion To Nothing: How Wish.com Lost Everything'
+  - '$1 Billion To Forgotten: How Dollar Shave Club Lost Everything'
+  - Jeep Tried To Milk Customers...Ended Up Losing $62 Billion
+- mask: '{BRAND} Thought They Were {BRAND}...Got A Harsh Reality Check'
+  family: thought_were
+  count: 4
+  avg_views: 812500
+  channels:
+  - logically_answered
+  examples:
+  - Apple Thought They Were Unbeatable...Ended Up Losing $1 Trillion
+  - Nothing Phone Thought They Were Apple...Got A Harsh Reality Check
+  - OnePlus Thought They Were Apple...Got A Harsh Reality Check
+- mask: The {ADJECTIVE} Death of {BRAND}
+  family: death
+  count: 4
+  avg_views: 343000
+  channels:
+  - mondo_startups
+  examples:
+  - The Deserved Death of McAfee Antivirus
+  - The Deserved Death of HP Printers
+  - The Satisfying Death of Stack Overflow
+- mask: '{BRAND} Is {VERB_ING}...'
+  family: collapse
+  count: 3
+  avg_views: 246666
+  channels:
+  - logically_answered
+  - mondo_startups
+  examples:
+  - The Spectacular Collapse of GoPro
+  - Perplexity Is Collapsing...
+  - The Carvana Situation Gets Worse...
+- mask: How {BRAND} Lost the {THING} War
+  family: lost_war
+  count: 3
+  avg_views: 94500
+  channels:
+  - mondo_startups
+  examples:
+  - How Perplexity Lost the AI War
+  - How Cursor Lost the AI War
+  - Why Claude Is Quietly Winning the AI War
+- mask: '{BRAND}''s {THING} {NOUN} Is Dead'
+  family: dream_dead
+  count: 3
+  avg_views: 52900
+  channels:
+  - mondo_startups
+  examples:
+  - Meta’s Open AI Dream Is Dead
+  - How DeepSeek’s AI Takeover Failed
+  - Apple’s AI Crisis Just Got Worse
+- mask: '{BRAND} Is (Finally) {VERB_ING} What They Deserve...'
+  family: finally_deserved
+  count: 2
+  avg_views: 1200000
+  channels:
+  - logically_answered
+  examples:
+  - Adobe Is (Finally) Getting What They Deserve...
+  - No One Is Using CoPilot...
+- mask: How {BRAND} {VERB} {BRAND}
+  family: destroyed_by
+  count: 2
+  avg_views: 84000
+  channels:
+  - mondo_startups
+  examples:
+  - Copilot has Destroyed Microsoft…
+  - How ChatGPT Killed Chegg

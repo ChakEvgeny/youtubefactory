@@ -144,3 +144,61 @@ def ffprobe_duration(path: Path) -> float:
         return float(p.stdout.strip())
     except ValueError:
         return 0.0
+
+
+def ahash(path, at: float = 0.5) -> int:
+    """Average-hash 8×8 первого содержательного кадра (видео) или картинки: похожие
+    кадры дают близкие хэши; расстояние Хэмминга ≤ 6 — «тот же кадр»."""
+    import subprocess
+    from PIL import Image
+    import io
+    p = str(path)
+    if p.lower().endswith((".mp4", ".mov", ".webm", ".mkv")):
+        r = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{at:.2f}", "-i", p, "-frames:v", "1",
+                            "-vf", "scale=8:8", "-f", "image2pipe", "-vcodec", "png", "-"],
+                           capture_output=True, timeout=60)
+        if not r.stdout:
+            return 0
+        img = Image.open(io.BytesIO(r.stdout))
+    else:
+        img = Image.open(p)
+    px = list(img.convert("L").resize((8, 8)).getdata())
+    avg = sum(px) / 64
+    return sum(1 << i for i, v in enumerate(px) if v > avg)
+
+
+def hamming(a: int, b: int) -> int:
+    return bin(a ^ b).count("1")
+
+
+class SeenFrames:
+    """Реестр показанных кадров на ролик (ctx/_seen_hashes.json): один и тот же или
+    почти тот же кадр не должен появляться дважды, тем более подряд."""
+
+    def __init__(self, ctx, thr: int = 6):
+        import json as _json
+        self.p = ctx / "_seen_hashes.json"
+        self.thr = thr
+        self.items = _json.loads(self.p.read_text(encoding="utf-8")) if self.p.exists() else []
+
+    def similar(self, path) -> bool:
+        try:
+            h = ahash(path)
+        except Exception:
+            return False
+        thr = self.thr + 4 if str(path).lower().endswith((".mp4", ".mov", ".webm")) else self.thr
+        return any(hamming(h, x["h"]) <= thr for x in self.items)
+
+    def add(self, path, idx=None):
+        try:
+            h = ahash(path)
+        except Exception:
+            return
+        import json as _json
+        self.items.append({"h": h, "file": str(path), "idx": idx})
+        self.p.write_text(_json.dumps(self.items), encoding="utf-8")
+
+    def reset(self):
+        self.items = []
+        if self.p.exists():
+            self.p.unlink()

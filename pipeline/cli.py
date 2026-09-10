@@ -14,13 +14,15 @@ from .util import CostLog, human_money, mask, slugify
 
 # артефакт, по наличию которого стадия считается выполненной
 ARTIFACT = {"brief": "brief.json", "script": "script.md", "critic": "critic.md",
-            "voice": "voice.mp3", "assets": "assets.json", "motion": "motion.json",
-            "assemble": "video.mp4",
+            "voice": "voice.mp3", "shotlist": "shotlist.json",
+            "assets": "assets.json", "collage": "collage.json", "screens": "screens.json", "generate": "generate.json",
+            "motion": "motion.json",
+            "assemble": "video.mp4", "review": "review.md",
             "thumbs": "thumbs.json", "meta": "meta.json", "passport": "passport.json"}
 
 # ориентировочная стоимость стадии для --dry-run, USD
-EST = {"brief": 0.45, "script": 1.20, "critic": 0.90, "voice": 2.60, "assets": 1.40,
-       "motion": 0.0, "assemble": 0.0, "thumbs": 0.02, "meta": 0.06, "passport": 0.0}
+EST = {"brief": 0.45, "script": 1.20, "critic": 0.90, "voice": 2.60, "shotlist": 0.05, "assets": 1.40, "generate": 0.0,
+       "collage": 0.10, "screens": 0.0, "motion": 0.0, "assemble": 0.0, "review": 0.05, "thumbs": 0.02, "meta": 0.06, "passport": 0.0}
 
 
 # ── --check ────────────────────────────────────────────────────────────────
@@ -85,6 +87,25 @@ def cmd_check(cfg: Config) -> int:
         all_ok &= _ok("Supabase productions", True, f"строк {n}")
     except Exception as e:
         all_ok &= _ok("Supabase productions", False, str(e)[:90])
+    # Генеративное видео: Gemini (Veo) и Runway
+    if cfg.key("GOOGLE_API_KEY"):
+        try:
+            from google import genai
+            ids = [m.name.split("/")[-1] for m in genai.Client(api_key=cfg.key("GOOGLE_API_KEY")).models.list() if "veo" in m.name]
+            _ok("Gemini/Veo", bool(ids), ", ".join(ids)[:100] or "veo-моделей не видно")
+        except Exception as e:
+            all_ok &= _ok("Gemini/Veo", False, str(e)[:110])
+    else:
+        _ok("Gemini/Veo", False, "нет GOOGLE_API_KEY (генеративка выключится)")
+    if cfg.key("RUNWAY_API_KEY"):
+        try:
+            from .sources.genvideo import runway_credits
+            rc = runway_credits(cfg)
+            _ok("Runway", True, f"кредитов {rc.get('credit_balance')}")
+        except Exception as e:
+            all_ok &= _ok("Runway", False, str(e)[:110])
+    else:
+        _ok("Runway", False, "нет RUNWAY_API_KEY")
     # Kling
     from .stages.assets import KLING_BASE, UA, kling_auth
     auth = kling_auth(cfg)
@@ -178,8 +199,8 @@ def cmd_list_voices(cfg: Config) -> int:
 
 # ── прогон ──────────────────────────────────────────────────────────────────
 def cmd_run(cfg: Config, args) -> int:
-    from .stages import (assemble, assets, brief, critic, meta, motion, passport,
-                         script, thumbs)
+    from .stages import (assemble, assets, brief, collage, critic, generate, meta, motion, passport,
+                         review, screens, script, shotlist, thumbs)
     topic = args.topic
     if not topic:
         raise SystemExit("нужен --topic \"текст\" (очередь тем из Supabase подключим позже)")
@@ -190,7 +211,10 @@ def cmd_run(cfg: Config, args) -> int:
     if args.only:
         plan = [s for s in plan if s in args.only.split(",")]
 
-    todo = [s for s in plan if args.from_stage or not (ctx / ARTIFACT[s]).exists()]
+    artifact = dict(ARTIFACT)
+    if args.preview:                      # превью не должно засчитывать полный video.mp4
+        artifact["assemble"] = "preview.mp4"
+    todo = [s for s in plan if args.from_stage or not (ctx / artifact[s]).exists()]
     skipped = [s for s in plan if s not in todo]
 
     if args.dry_run:
@@ -214,19 +238,36 @@ def cmd_run(cfg: Config, args) -> int:
         t0 = time.time()
         print(f"▶  {s} …")
         if s == "brief":
-            results[s] = brief.run(cfg, ctx, topic, cost)
+            research = args.research
+            if research and Path(research).exists():
+                research = Path(research).read_text(encoding="utf-8")
+            results[s] = brief.run(cfg, ctx, topic, cost, angle=args.angle,
+                                   research=research, augment=args.augment_brief)
         elif s == "script":
-            results[s] = script.run(cfg, ctx, cost)
+            notes = args.notes
+            if notes and Path(notes).exists():
+                notes = Path(notes).read_text(encoding="utf-8")
+            results[s] = script.run(cfg, ctx, cost, notes=notes)
         elif s == "critic":
             results[s] = critic.run(cfg, ctx, cost)
         elif s == "voice":
             results[s] = voice_run(cfg, ctx, cost)
+        elif s == "shotlist":
+            results[s] = shotlist.run_stage(cfg, ctx, cost)
         elif s == "assets":
-            results[s] = assets.run_stage(cfg, ctx, cost)
+            results[s] = assets.run_stage(cfg, ctx, cost, preview_sec=args.preview)
+        elif s == "collage":
+            results[s] = collage.run_stage(cfg, ctx, cost, preview_sec=args.preview)
+        elif s == "generate":
+            results[s] = generate.run_stage(cfg, ctx, cost, preview_sec=args.preview, max_cost_eur=args.max_gen_cost)
+        elif s == "screens":
+            results[s] = screens.run_stage(cfg, ctx, cost, preview_sec=args.preview)
         elif s == "motion":
             results[s] = motion.run_stage(cfg, ctx, cost)
         elif s == "assemble":
-            results[s] = assemble.run_stage(cfg, ctx, cost)
+            results[s] = assemble.run_stage(cfg, ctx, cost, preview_sec=args.preview)
+        elif s == "review":
+            results[s] = review.run_stage(cfg, ctx, cost, preview_sec=args.preview)
         elif s == "thumbs":
             results[s] = thumbs.run_stage(cfg, ctx, cost)
         elif s == "meta":
@@ -250,11 +291,20 @@ def main():
     ap = argparse.ArgumentParser(prog="pipeline", description="Конвейер производства роликов")
     ap.add_argument("--channel", help="space | business | geography")
     ap.add_argument("--topic", help="тема ролика")
+    ap.add_argument("--angle", help="под каким углом подавать; идёт в brief и script")
+    ap.add_argument("--notes", help="дополнительные требования к сценарию (файл или текст)")
+    ap.add_argument("--research", help="целевой запрос на добор фактуры (файл или текст)")
+    ap.add_argument("--preview", type=float, metavar="SEC",
+                    help="собрать только первые SEC секунд (превью)")
+    ap.add_argument("--augment-brief", action="store_true",
+                    help="дополнить существующий brief, а не переписать")
     ap.add_argument("--slug", help="имя папки; по умолчанию из темы")
     ap.add_argument("--date", help="YYYY-MM-DD; по умолчанию сегодня")
     ap.add_argument("--from", dest="from_stage", choices=STAGES,
                     help="пересобрать начиная с этой стадии")
     ap.add_argument("--only", help="только эти стадии через запятую")
+    ap.add_argument("--max-gen-cost", type=float, default=None, metavar="EUR",
+                    help="лимит генеративного видео на ролик, EUR (по умолчанию gen.max_cost_eur; 0 = выключить)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--list-voices", action="store_true")

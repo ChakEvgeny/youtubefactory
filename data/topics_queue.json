@@ -1,0 +1,40 @@
+[
+  {
+    "channel": "business", "niche": "business_breakdowns", "priority": 20,
+    "title": "Beefeater and Brewers Fayre: Whitbread kills its own restaurant empire",
+    "angle": "Компания не разорилась — она сознательно закрыла прибыльный когда-то формат ради встроенной еды в Premier Inn. Сюжет «умерло не от банкротства, а от решения».",
+    "event_date": "2026-09-10",
+    "summary": "Whitbread закрыл все 89 Brewers Fayre (7 сентября) и все 106 Beefeater (10 сентября), около 3800 рабочих мест, цель — экономия 250 млн фунтов за пять лет.",
+    "why_story": "Beefeater работал с 1974 года — полвека британской привычки. Взлёт: национальная сеть, узнаваемый бренд. Падение: не банкротство, а решение совета директоров вычеркнуть весь формат.",
+    "sources": [
+      {"title": "Institute of Licensing: Beefeater to close all 106 UK sites", "url": "https://instituteoflicensing.org/network-news/beefeater-to-close-all-106-uk-sites-as-whitbread-confirms-exit-from-pub-restaurant-sector/"},
+      {"title": "Morning Advertiser: closure dates for all Beefeater restaurants", "url": "https://www.morningadvertiser.co.uk/Article/2026/07/27/whitbread-confirms-closure-dates-for-all-beefeater-restaurants/"},
+      {"title": "The Caterer: Whitbread confirms Beefeater closures date", "url": "https://www.thecaterer.com/news/whitbread-confirms-beefeater-closures-date"}
+    ],
+    "analogues": [
+      {"url": "https://youtu.be/v8w6djdUt1U", "title": "Why Nobody's Eating McDonald's Anymore",
+       "views": 1369136, "channel": "Michael Girdley", "subs": 353000,
+       "channel_age_months": 45.6, "vs": 3.9}
+    ],
+    "status": "queued"
+  },
+  {
+    "channel": "business", "niche": "business_breakdowns", "priority": 30,
+    "title": "Harvey Nichols: the luxury icon sold for less than its annual loss",
+    "angle": "Операционный убыток в 177.9 млн фунтов против цены продажи около 54 млн долларов — компанию купили дешевле, чем она теряла за год. Спасителем стал Майк Эшли, которого люксовый ритейл считал могильщиком брендов.",
+    "event_date": "2026-08-13",
+    "summary": "Harvey Nichols вошёл в администрацию в июне 2026 и 13 августа продан Frasers Group через pre-pack примерно за 54 млн долларов; Next проиграл торги.",
+    "why_story": "Взлёт: икона Найтсбриджа, 35 лет под владением гонконгского миллиардера Диксона Пуна. Падение: пять убыточных лет, выручка минус 11% до 69.4 млн фунтов, операционный убыток вырос с 14.4 до 177.9 млн.",
+    "sources": [
+      {"title": "Bloomberg: Frasers Group Buys Harvey Nichols Out of Insolvency", "url": "https://www.bloomberg.com/news/articles/2026-08-13/frasers-group-acquires-uk-luxury-department-store-harvey-nichols"},
+      {"title": "Forbes: Frasers Buys Harvey Nichols, Faces One Of Toughest Revivals In Luxury", "url": "https://www.forbes.com/sites/markfaithfull/2026/08/14/frasers-buys-harvey-nichols-faces-one-of-toughest-revivals-in-luxury/"},
+      {"title": "Cosmetics Business: Harvey Nichols acquired by Frasers Group", "url": "https://www.cosmeticsbusiness.com/harvey-nichols-acquired-by-frasers-group-saving-luxury"}
+    ],
+    "analogues": [
+      {"url": "https://youtu.be/XtdJHyQsL6s", "title": "The Satisfying End Of Subway",
+       "views": 508398, "channel": "The Philosophy Of Markets", "subs": 103000,
+       "channel_age_months": 42.0, "vs": 4.9}
+    ],
+    "status": "queued"
+  }
+]

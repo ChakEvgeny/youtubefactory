@@ -7,6 +7,7 @@ counter (числовой счётчик), callout (текстовая плаш�
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -17,8 +18,13 @@ COMP = {"brand": "BrandCard", "chart": "Chart", "counter": "Counter", "callout":
 FPS = 30
 
 
+LIST_FIELDS = {"points", "labels"}      # только эти поля — списки
+
+
 def parse_data(raw: str) -> dict:
-    """`k=v; k=v` -> dict, числа и списки чисел приводятся к типам."""
+    """`k=v; k=v` -> dict. Списками становятся ТОЛЬКО points и labels:
+    раньше любое значение с запятой (note=Sharon Graham, Unite, 2026)
+    превращалось в список и рендерилось в кадре как питоновский массив."""
     out: dict = {}
     for part in (raw or "").split(";"):
         if "=" not in part:
@@ -27,14 +33,13 @@ def parse_data(raw: str) -> dict:
         k, v = k.strip(), v.strip()
         if not k:
             continue
-        if "," in v and all(_isnum(x) for x in v.split(",") if x.strip()):
-            out[k] = [float(x) for x in v.split(",") if x.strip()]
+        if k in LIST_FIELDS and "," in v:
+            items = [x.strip() for x in v.split(",") if x.strip()]
+            out[k] = [float(x) for x in items] if all(_isnum(x) for x in items) else items
         elif _isnum(v):
             out[k] = float(v)
-        elif "," in v:
-            out[k] = [x.strip() for x in v.split(",") if x.strip()]
         else:
-            out[k] = v
+            out[k] = v                   # строка остаётся строкой, запятые внутри
     return out
 
 
@@ -48,20 +53,23 @@ def _isnum(s: str) -> bool:
 
 def build_props(kind: str, data: dict, palette: list[str], frames: int) -> dict:
     p = {"palette": palette, "durationInFrames": frames}
+    def txt(v):
+        return " · ".join(str(x) for x in v) if isinstance(v, (list, tuple)) else str(v)
+
     if kind == "brand":
-        p |= {"brand": str(data.get("brand", "BRAND"))[:22],
+        p |= {"brand": txt(data.get("brand", "BRAND"))[:22],
               "effect": data.get("effect", "crack"),
-              "subtitle": str(data.get("subtitle", ""))[:34]}
+              "subtitle": txt(data.get("subtitle", ""))[:34]}
     elif kind == "chart":
         pts = data.get("points") or [100, 70, 40, 15]
-        p |= {"title": str(data.get("title", ""))[:44], "points": [float(x) for x in pts],
-              "labels": data.get("labels") or [], "unit": str(data.get("unit", ""))}
+        p |= {"title": txt(data.get("title", ""))[:44], "points": [float(x) for x in pts],
+              "labels": data.get("labels") or [], "unit": txt(data.get("unit", ""))}
     elif kind == "counter":
         p |= {"from": float(data.get("from", 0)), "to": float(data.get("to", 0)),
-              "prefix": str(data.get("prefix", "")), "suffix": str(data.get("suffix", "")),
-              "label": str(data.get("label", ""))[:40]}
+              "prefix": txt(data.get("prefix", "")), "suffix": txt(data.get("suffix", "")),
+              "label": txt(data.get("label", ""))[:40]}
     elif kind == "callout":
-        p |= {"text": str(data.get("text", ""))[:90], "note": str(data.get("note", ""))[:50]}
+        p |= {"text": txt(data.get("text", ""))[:90], "note": txt(data.get("note", ""))[:60]}
     return p
 
 
@@ -72,8 +80,26 @@ def render_one(kind: str, props: dict, out: Path) -> None:
 
 
 def run_stage(cfg, ctx: Path, cost) -> dict:
-    scenes = json.loads((ctx / "scenes.json").read_text(encoding="utf-8"))
-    motion = [s for s in scenes if s.get("type") == "motion"]
+    src = ctx / "shotlist.json"
+    scenes = json.loads((src if src.exists() else ctx / "scenes.json").read_text(encoding="utf-8"))
+    motion = [s for s in scenes if (s.get("kind") or s.get("type")) == "motion"
+              or s.get("src_kind") == "card"]
+    # карточка без разметки сценариста: brand для компании/продукта, quote для цитаты,
+    # callout для остального — данные берём из subject/fact кадра
+    for s_ in motion:
+        if s_.get("motion_kind"):
+            continue
+        subj, st, fact = s_.get("subject") or "", s_.get("subject_type") or "", s_.get("fact") or ""
+        quote = re.search(r'"([^"]{12,140})"', s_.get("text", "") or "")
+        if st in ("company", "product") and subj:
+            s_["motion_kind"] = "brand"
+            s_["motion_data"] = f"brand={subj[:22]}; effect=crack; subtitle={fact[:30]}"
+        elif quote:
+            s_["motion_kind"] = "callout"
+            s_["motion_data"] = f"text={quote.group(1)[:90]}; note={subj or 'quote'}"
+        else:
+            s_["motion_kind"] = "callout"
+            s_["motion_data"] = f"text={fact or (s_.get('text') or '')[:70]}; note={subj}"
     palette = cfg.channel["thumb_palette"]
     cache_dir = cfg.paths.cache_dir / "motion"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -90,7 +116,8 @@ def run_stage(cfg, ctx: Path, cost) -> dict:
             kind = sc.get("motion_kind", "callout")
             if kind not in COMP:
                 kind = "callout"
-            frames = int(max(sc.get("seconds", 4), 2) * FPS)
+            # клип ровно на длину слота: без loop и без статики в хвосте
+            frames = int(max(sc.get("dur") or sc.get("seconds", 4), 2) * FPS)
             props = build_props(kind, parse_data(sc.get("motion_data", "")), palette, frames)
             h = sha1(kind, json.dumps(props, sort_keys=True))
             dest = cache_dir / f"{h}.mp4"

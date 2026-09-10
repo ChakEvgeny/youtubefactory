@@ -1,5 +1,6 @@
 import React from "react";
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { Frame } from "./Frame";
 
 // Вордмарк рисуется ИЗ НАЗВАНИЯ бренда. Чужие файлы логотипов не используются.
 export const brandSchema = {};
@@ -26,7 +27,7 @@ export const BrandCard: React.FC<{
   const size = Math.min(width / (Math.max(brand.length, 4) * 0.62), height * 0.26);
 
   return (
-    <AbsoluteFill style={{ backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
+    <Frame palette={palette}><AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
       {effect === "fire" && (
         <AbsoluteFill style={{
           background: `radial-gradient(circle at 50% 88%, ${accent}${Math.round(heat * 160).toString(16).padStart(2, "0")} 0%, transparent 62%)`,
@@ -59,6 +60,6 @@ export const BrandCard: React.FC<{
           opacity: interpolate(t, [1.6, 2.2], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
         }}>{subtitle.toUpperCase()}</div>
       ) : null}
-    </AbsoluteFill>
+    </AbsoluteFill></Frame>
   );
 };

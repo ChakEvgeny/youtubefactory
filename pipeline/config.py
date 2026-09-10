@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 
 from .util import ROOT, slugify
 
-STAGES = ["brief", "script", "critic", "voice", "assets", "motion", "assemble",
-          "thumbs", "meta", "passport"]
+STAGES = ["brief", "script", "critic", "voice", "shotlist", "screens",
+          "collage", "generate", "assets", "motion", "assemble", "review", "thumbs", "meta", "passport"]
 
 REQUIRED_KEYS = ["ANTHROPIC_API_KEY", "ELEVENLABS_API_KEY", "PEXELS_API_KEY",
                  "PIXABAY_API_KEY", "SUPABASE_URL", "SUPABASE_SERVICE_KEY"]
@@ -56,8 +56,15 @@ class Config:
         return self.defaults.get(name, default)
 
     def video_dir(self, slug: str, date: str | None = None) -> Path:
+        s = slugify(slug)
+        if not date:
+            # ролик, начатый вчера, после полуночи должен продолжаться в своей папке,
+            # а не уезжать в новую с сегодняшней датой
+            existing = sorted((self.paths.out_dir / self.channel_id).glob(f"????-??-??_{s}"))
+            if existing:
+                return existing[-1]
         d = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        return self.paths.out_dir / self.channel_id / f"{d}_{slugify(slug)}"
+        return self.paths.out_dir / self.channel_id / f"{d}_{s}"
 
     def target_seconds(self) -> tuple[int, int]:
         lo, hi = self.channel["target_minutes"]
