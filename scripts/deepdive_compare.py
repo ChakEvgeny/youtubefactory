@@ -29,7 +29,7 @@ def check(niche):
     for v in D[niche]["top_views"][:4]:
         content.append({"type": "image", "source": {
             "type": "url", "url": f"https://i.ytimg.com/vi/{v['id']}/hqdefault.jpg"}})
-    r = client.messages.create(model="claude-haiku-4-5", max_tokens=800, system=SYS,
+    r = client.messages.create(model="claude-opus-5", max_tokens=800, system=SYS,
                                messages=[{"role": "user", "content": content}])
     t = "".join(b.text for b in r.content if b.type == "text")
     t = re.sub(r"^```(?:json)?\s*|\s*```$", "", t.strip(), flags=re.MULTILINE).strip()

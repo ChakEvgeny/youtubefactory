@@ -36,8 +36,8 @@ for f in sorted(glob.glob(str(R / "*.info.json"))):
               "\"ai_voice_or_editing\":\"есть ли жалобы/подозрения на AI-озвучку или монтаж — цитата или 'нет'\","
               "\"topic_suggestions\":[{\"topic\":\"компания/бренд/событие\",\"why\":\"почему зрители просят\",\"likes\":число}],"
               "\"notable_quotes\":[\"2–3 самых залайканных характерных комментария\"]}")
-    r = client.messages.create(model="claude-haiku-4-5", max_tokens=1800, messages=[{"role": "user", "content": prompt}])
-    cost += claude_cost("claude-haiku-4-5", r.usage)
+    r = client.messages.create(model="claude-opus-5", max_tokens=1800, messages=[{"role": "user", "content": prompt}])
+    cost += claude_cost("claude-opus-5", r.usage)
     a = parse_json_block("".join(b.text for b in r.content if b.type == "text"))
     a.update({"id": vid, "channel": ch, "title": title, "views": views, "n_comments": len(cs)})
     per_video.append(a)
@@ -80,14 +80,14 @@ prompt = ("Ниже разборы комментариев под 20 самым
           "НЕ сюжеты самих 20 роликов (их темы: " + "; ".join(ref_subjects)[:600] + "); приоритет европейским/британским брендам; "
           "\nЗАПРОСЫ ЗРИТЕЛЕЙ ПО REGEX (имя (вес по лайкам)): " + ", ".join(asked) + "\n"
           "\"rules_for_us\":[\"строка\"]} — все элементы массивов СТРОКИ, без вложенных объектов, кратко.\n\n" + digest)
-r = client.messages.create(model="claude-haiku-4-5", max_tokens=8000, messages=[{"role": "user", "content": prompt}])
-cost += claude_cost("claude-haiku-4-5", r.usage)
+r = client.messages.create(model="claude-opus-5", max_tokens=8000, messages=[{"role": "user", "content": prompt}])
+cost += claude_cost("claude-opus-5", r.usage)
 S = parse_json_block("".join(b.text for b in r.content if b.type == "text"))
 
 L = [f"# Аудитория: {NICHE}", "",
      f"Источник: комментарии (топ по лайкам, до 400 на ролик) под 10 самыми просмотренными роликами Mondo Startups и "
      f"10 — Logically Answered; всего {sum(a['n_comments'] for a in per_video)} комментариев, 20 роликов. "
-     f"Разбор — claude-haiku-4-5, ${cost:.2f}. Дата: 2026-09-10.", "",
+     f"Разбор — claude-opus-5, ${cost:.2f}. Дата: 2026-09-10.", "",
      "## Что хвалят", ""] + [f"- {j([x])}" for x in S.get("praise", [])] + ["", "## О чём просят рассказать", ""] + \
     [f"- {j([x])}" for x in S.get("requests", [])] + ["", "## На что жалуются", ""] + [f"- {j([x])}" for x in S.get("complaints", [])] + \
     ["", f"**AI-озвучка.** {S.get('ai_voice_verdict','')}", "", f"**Монтаж.** {S.get('editing_verdict','')}", "",

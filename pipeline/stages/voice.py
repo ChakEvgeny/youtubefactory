@@ -15,7 +15,7 @@ MODEL = "eleven_v3"
 PRICE_PER_1K_CHARS = 0.15
 # ВСЯ разметка, а не только SCENE: строки [MOTION: ...] раньше попадали в озвучку
 # и диктор читал вслух «counter from=0 to=4000 label=...».
-MARK_RE = re.compile(r"^\[(?:SCENE|MOTION|BEAT):.+?\]\s*$", re.IGNORECASE | re.MULTILINE)
+MARK_RE = re.compile(r"^\[(?:SCENE|MOTION|BEAT|SHOT):.+?\]\s*$", re.IGNORECASE | re.MULTILINE)
 
 
 def _req(path: str, key: str, payload=None, method="GET"):
@@ -177,7 +177,7 @@ def trim_silence(parts: list[Path], words: list[dict], out: Path,
     return new, round(sum(d for _, d in removed), 2)
 
 
-def run_stage(cfg, ctx, cost) -> dict:
+def run_stage(cfg, ctx, cost, preview_sec: float | None = None) -> dict:
     key = cfg.key("ELEVENLABS_API_KEY")
     voice_id = (cfg.channel.get("voice_id") or "").strip()
     if not voice_id:
@@ -186,6 +186,16 @@ def run_stage(cfg, ctx, cost) -> dict:
     cache = Cache(cfg.paths.cache_dir)
     script = (ctx / "script.md").read_text(encoding="utf-8")
     chunks = split_paragraphs(script)
+    if preview_sec:
+        # превью: озвучиваем только начало (+50% запаса), полный голос — после вердикта по минуте
+        wpm = float(cfg.defaults.get("words_per_minute", 150))
+        budget_words, kept, acc = preview_sec / 60 * wpm * 1.5, [], 0
+        for c in chunks:
+            kept.append(c); acc += len(MARK_RE.sub("", c).split())
+            if acc >= budget_words:
+                break
+        print(f"    · превью {preview_sec:.0f}с: озвучиваю {len(kept)} из {len(chunks)} фрагментов (~{acc} слов)")
+        chunks = kept
 
     # сколько реально придётся оплатить: чанки из кэша не тарифицируются
     speed = float(cfg.defaults.get("narration_speed", 1.0))

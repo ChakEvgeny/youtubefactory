@@ -27,7 +27,7 @@ SYSTEM = """Ты редактор закадрового текста. Твоя 
    на сцену с человеком, опираясь на факты BRIEF. Если в BRIEF нет подходящей
    человеческой сцены — так и скажи в why, но замену не выдумывай.
 
-Правки применяй прямо в тексте. Строки [SCENE: ...] сохраняй как есть,
+Правки применяй прямо в тексте. Строки [SCENE: ...] / [SHOT: ...] / [BEAT: ...] сохраняй как есть,
 их менять нельзя. Длину сохраняй в пределах ±10%.
 
 Отвечай ТОЛЬКО JSON без markdown:
@@ -51,7 +51,7 @@ NUMBERS_SYSTEM = """Ты редактор. В тексте слишком мно
 
 Правила:
 - Прямые цитаты людей не трогай вообще, даже если внутри цитаты есть число.
-- Строки [SCENE: ...] и [MOTION: ...] не трогай.
+- Строки [SCENE: ...], [SHOT: ...], [BEAT: ...] и [MOTION: ...] не трогай.
 - Лишнее число либо превращай в последствие («выручка упала на 24%» -> что это
   значило для конкретной фирмы или человека), либо убирай вместе с предложением,
   если без числа оно пустое.
@@ -80,7 +80,7 @@ def numbers_pass(cfg, ctx, cost, limit: int = 12, min_words: int = 1600,
     data = parse_json_block("".join(b.text for b in msg.content if b.type == "text"))
     fixed = data.get("script") or script
     import re as _re
-    n = len(_re.sub(r"^\[(?:SCENE|MOTION):.+?\]\s*$", "", fixed, flags=_re.M | _re.I).split())
+    n = len(_re.sub(r"^\[(?:SCENE|MOTION|SHOT|BEAT):.+?\]\s*$", "", fixed, flags=_re.M | _re.I).split())
     if not (min_words * 0.95 <= n <= max_words * 1.05):
         return {"applied": False, "words": n,
                 "reason": f"после чистки {n} слов — вне рамки {min_words}-{max_words}, откат"}

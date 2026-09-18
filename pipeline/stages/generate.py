@@ -17,7 +17,7 @@ from pathlib import Path
 from ..sources import genvideo as gv
 from ..util import Cache, claude_cost, parse_json_block, sha1
 
-SANITIZE_MODEL = "claude-haiku-4-5"
+SANITIZE_MODEL = "claude-opus-5"
 GENERIC_BAN = re.compile(r"\b(logo|logotype|badge|emblem|brand name|wordmark|trademark)\b", re.I)
 
 
@@ -57,14 +57,17 @@ def qc_clip(client, file: Path, prompt: str, cost) -> dict:
                    "Клип пойдёт в документальный ролик на 3–5 секунд как атмосферный план. "
                    "БРАК (ok=false) только при: читаемом тексте/вывесках/логотипах; узнаваемом бренде, реальном человеке или "
                    "конкретном здании; уродливых руках/лицах/телах (лишние пальцы, сросшиеся конечности); главном объекте, "
-                   "который явно меняет форму между кадрами; мультяшности. Лёгкий дрейф фоновой геометрии (провода, балки, "
-                   "перспектива на дальнем плане) — НЕ брак. Верни ТОЛЬКО JSON {\"ok\": true/false, \"defects\": [\"...\"], "
-                   "\"score\": 0-10} — score 5 и выше значит годен."}]
-    r = client.messages.create(model=SANITIZE_MODEL, max_tokens=300, messages=[{"role": "user", "content": msg}])
+                   "который явно меняет форму между кадрами; сильном смазе (motion blur) или «плывущем» главном объекте — машине, "
+                   "станке, здании; мультяшности или «игровой» CG-картинке. Лёгкий дрейф фоновой геометрии (провода, балки, "
+                   "перспектива на дальнем плане) — НЕ брак. Отдельно: клип ОБЯЗАН показывать то, что описано в промпте, — пустой щит, "
+                   "пустая комната или абстракция вместо названной сцены = брак (\"matches\": false). "
+                   "Верни ТОЛЬКО JSON {\"ok\": true/false, \"matches\": true/false, \"defects\": [\"...\"], "
+                   "\"score\": 0-10} — score 6 и выше значит годен."}]
+    r = client.messages.create(model=SANITIZE_MODEL, max_tokens=700, messages=[{"role": "user", "content": msg}])
     cost.add("generate", SANITIZE_MODEL, claude_cost(SANITIZE_MODEL, r.usage), "QC клипа")
     d = parse_json_block("".join(b.text for b in r.content if b.type == "text"))
     sc = d.get("score")
-    ok = bool(d.get("ok")) or (isinstance(sc, (int, float)) and sc >= 5)
+    ok = bool(d.get("ok")) and d.get("matches", True) and (not isinstance(sc, (int, float)) or sc >= 6)
     return {"ok": ok, "why": "; ".join(d.get("defects") or [])[:200], "score": sc}
 
 
@@ -94,6 +97,15 @@ def run_stage(cfg, ctx: Path, cost, preview_sec: float | None = None, max_cost_e
     eur = float(g.get("eur_per_usd", 0.92))
     shots = json.loads((ctx / "shotlist.json").read_text(encoding="utf-8"))
     coll = {c["idx"]: c for c in (json.loads((ctx / "collage.json").read_text(encoding="utf-8")) if (ctx / "collage.json").exists() else [])}
+    fl = float(g.get("front_load_sec") or 0)
+    for s in shots:
+        if s["start"] >= fl or s.get("gen"):
+            continue
+        c = coll.get(s["idx"])
+        if s.get("src_kind") == "collage" and c and c.get("photo"):
+            s["gen"] = "i2v"                                   # реальное фото есть -> движение камеры
+        elif s.get("src_kind") in ("stock", "card") and s.get("visual") and s.get("kind") != "motion":
+            s["gen"] = "t2v"                                   # атмосферный план -> Veo
     todo = [s for s in shots if s.get("gen") in ("i2v", "t2v") and (preview_sec is None or s["start"] < preview_sec)]
     if not g.get("enabled") or limit_eur <= 0 or not todo:
         return {"enabled": bool(g.get("enabled")), "shots": len(todo), "rendered": 0, "spent_eur": 0.0, "skipped": "выключено или нечего"}
@@ -115,7 +127,11 @@ def run_stage(cfg, ctx: Path, cost, preview_sec: float | None = None, max_cost_e
             photo = Path(c["photo"]) if c and c.get("photo") and Path(c["photo"]).exists() else None
             if not photo:                                  # правило (а) требует реальное фото; иначе — (б)
                 want = "t2v"
-        san = sanitize_prompt(client, f"{sh.get('visual') or sh.get('scene_desc') or ''}. {sh.get('text','')[:160]}", style, banned, cost)
+        if want == "i2v":
+            san = {"prompt": "Slow cinematic push-in with subtle parallax, natural light, documentary handheld drift; "
+                             "keep the photo exactly as is, no new objects, no text", "removed": [], "ok": True}
+        else:
+            san = sanitize_prompt(client, f"{sh.get('visual') or sh.get('scene_desc') or ''}. {sh.get('text','')[:160]}", style, banned, cost)
         if not san["ok"]:
             log.append({"idx": sh["idx"], "result": "prompt rejected", "removed": san.get("removed"), "hit": san.get("banned_hit")})
             sh.pop("gen", None)
@@ -164,7 +180,7 @@ def run_stage(cfg, ctx: Path, cost, preview_sec: float | None = None, max_cost_e
                 res["qc"] = qc
                 break
             except Exception as e:                         # правило (в): следующий провайдер
-                err.append(f"{prov}: {str(e)[:100]}")
+                err.append(f"{prov}: {str(e)[:300]}")
                 res = None
         if not res:
             log.append({"idx": sh["idx"], "result": "failed", "errors": err})

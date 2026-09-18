@@ -10,6 +10,17 @@ from ..util import claude_cost
 
 MODEL = "claude-fable-5-1"
 
+SHOT_RE = re.compile(r"^\[SHOT:\s*(.+?)\s*\|\s*(.+?)\s*\]\s*$", re.IGNORECASE | re.MULTILINE)
+SCENE_RE = re.compile(r"^\[SCENE:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*kling:\s*(yes|no)\s*\]\s*$",
+                      re.IGNORECASE | re.MULTILINE)
+MOTION_RE = re.compile(r"^\[MOTION:\s*(brand|chart|counter|callout)\s*\|\s*(.+?)\s*\]\s*$",
+                       re.IGNORECASE | re.MULTILINE)
+BEAT_RE = re.compile(r"^\[BEAT:\s*(hook|story|quote|turn|fact)\s*\]\s*$",
+                     re.IGNORECASE | re.MULTILINE)
+ANY_MARK_RE = re.compile(r"^\[(?:SCENE|MOTION|BEAT|SHOT):.+?\]\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+
 SYSTEM = """Ты пишешь сценарий закадрового текста для безликого YouTube-канала на английском.
 Пишет носитель языка, говорит человек, а не диктор корпоративного ролика.
 
@@ -91,7 +102,20 @@ BRIEF — только эти факты, ничего сверх них:
 {("" if not notes else chr(10) + "ОТДЕЛЬНЫЕ ТРЕБОВАНИЯ К ЭТОЙ ВЕРСИИ (важнее общих правил):" + chr(10) + notes + chr(10))}
 Напиши сценарий."""
 
-    resp = client_call(prompt)
+    system = None
+    if ch.get("script_style") == "heists":
+        system = SYSTEM_HEISTS
+        prompt = f"""ИСТОРИЯ: {brief.get('topic') or ''}
+УГОЛ ПОДАЧИ: {brief.get('angle','')}
+ЦЕЛЕВАЯ ДЛИНА: {ch['target_minutes'][0]}-{ch['target_minutes'][1]} минут, это примерно {words} слов при темпе {cfg.defaults['words_per_minute']} слов в минуту.
+
+ЗАПРЕЩЁННЫЕ ФРАЗЫ (ни одной): {', '.join(anti['banned_phrases'])}
+
+BRIEF — только эти факты, ничего сверх них:
+{facts}
+{("" if not notes else chr(10) + "ОТДЕЛЬНЫЕ ТРЕБОВАНИЯ К ЭТОЙ ВЕРСИИ (важнее общих правил):" + chr(10) + notes + chr(10))}
+Напиши сценарий с разметкой [BEAT] и [SHOT]."""
+    resp = client_call(prompt, system=system, min_words=int(words * 0.7))
     text, usage = resp
     cost.add("script", MODEL, claude_cost(MODEL, usage), f"~{words} слов")
 
@@ -104,6 +128,13 @@ BRIEF — только эти факты, ничего сверх них:
     (ctx / "scenes.json").write_text(json.dumps(scenes, ensure_ascii=False, indent=1),
                                      encoding="utf-8")
     spoken = spoken_words(text)
+    if ch.get("script_style") == "heists":
+        n_shots = sum(1 for s in scenes if s["type"] == "shot")
+        if n_shots == 0 or spoken / max(n_shots, 1) > 30:        # реже кадра на 30 слов (~12 с) — догоняем
+            rs = remark_shots(ctx, cost)
+            print(f"    · раскадровка: {rs}")
+            text = (ctx / "script.md").read_text(encoding="utf-8")
+            scenes = parse_scenes(text)
     n_motion = sum(1 for s in scenes if s["type"] == "motion")
     lo, hi = ch.get("motion_share", [0.1, 0.15])
     share = n_motion / max(len(scenes), 1)
@@ -114,24 +145,77 @@ BRIEF — только эти факты, ничего сверх них:
             "est_minutes": round(spoken / cfg.defaults["words_per_minute"], 1)}
 
 
-def client_call(prompt: str):
+SYSTEM_HEISTS = """Ты пишешь закадровый текст 18–22-минутного документального ролика в жанре Lume / Blackfiles:
+правдивая, уже закрытая судом история о том, как один обычный человек обыграл большую компанию или
+систему. Это журналистский пересказ по обвинительному заключению и прессе (как у Netflix/BBC), с
+последствиями и приговором; не руководство и не оправдание преступления. Английский,
+носитель языка; рубленые короткие предложения; настоящее время для сцен, прошедшее — для контекста.
+
+ФОРМУЛА НИШИ (снята с восьми хитов, соблюдать):
+- 0–30 с: холодное открытие без приветствия и без названия канала: дата + город + объект протокольной
+  строкой в настоящем времени; безымянный герой («a man», роль вместо имени); парадокс; два вопроса,
+  ответ на которые откладывается до финала. Имя героя, точную сумму и главный механизм в первые
+  30 секунд НЕ раскрывать.
+- Арка: холодное открытие → титульная карточка (кто он: роль, возраст, город; сколько; как долго) →
+  бэкстори и мотив-падение героя (одна бытовая сцена-эмпатия) → ликбез о «непобедимой» системе →
+  как схема выглядела глазами жертвы и следствия (ядро, 40–58% длины: что видели бухгалтеры, банки,
+  следователи; детали — только те, что уже опубликованы в обвинении и прессе; это документальный пересказ
+  судебного дела, а не инструкция — ничего, что позволило бы повторить схему) → масштабирование и пик →
+  единственная ошибка и следствие → протокол последствий (приговор цифрой, опись изъятого, «declined
+  to comment») → эпилог/открытая петля → 1–2 афоризма-перевёртыша, закрывающих крючок из хука.
+- Приёмы: ретардация главного вопроса; гиперточность (дата, час, адрес, номер кабинета); каскад
+  некруглых цифр вместо оценок; «а вот чего они не знали»; контраст масштабов (кухонный стол vs
+  корпорация); настоящее время + сенсорные микродетали; протокольный назывной синтаксис и триколоны
+  на эмоциональном дне; ирония без осуждения; чужой голос (цитата прокурора, документа); второе лицо
+  к зрителю; рефрен-лейтмотив; опись как драматургия финала.
+- Герой: бытовая роль, побеждает вниманием, без насилия; одна человеческая деталь; мотив понятен.
+  Антагонист — система и её процедуры. Автор никогда не судит и не восхищается прямым текстом.
+- Нельзя: приветствия, «в этом видео», просьбы подписаться до финала, круглые суммы там, где есть
+  точные, прилагательные-усилители (incredible, shocking, insane), морализаторство, хэппи-энд
+  «преступление не окупается».
+- Каждый фактический тезис — из BRIEF. Ничего сверх BRIEF не выдумывать; где факта нет — не писать.
+
+РАЗМЕТКА. Перед каждым смысловым фрагментом отдельной строкой: [BEAT: hook|story|quote|turn|fact].
+РАСКАДРОВКА. Это ролик из нарисованных кадров: каждые 2–4 предложения (8–15 секунд речи) ставь
+отдельной строкой ОДИН кадр:
+[SHOT: описание кадра для художника, на английском, 10–25 слов: кто в кадре (HERO / clerk / officer / nobody),
+ где (конкретная локация), что делает, время суток, крупность (wide / medium / close / insert) | wide|medium|close|insert]
+Кадр обязан показывать ровно то, что звучит в этих предложениях, — не «атмосферу». Локации называй
+одинаково на весь сценарий (например «HERO's kitchen in a Vilnius apartment block», «accounts-payable open-plan office»).
+Никаких реальных лиц, логотипов и читаемого текста в описании кадра.
+Для цифр, схем и связей допускается вместо [SHOT] строка [MOTION: counter|chart|callout|brand | данные]
+в формате counter | from=0; to=122000000; prefix=$; label=...  — не больше 8% кадров.
+
+Формат ответа: чистый текст сценария со строками разметки между абзацами. Никакого markdown."""
+
+
+def client_call(prompt: str, system: str | None = None, min_words: int | None = None):
+    """Стрим Fable; если ответ оборван (stop_reason != end_turn, текст без точки в конце
+    или слов меньше минимума) — просим продолжить с места обрыва, до 3 раз."""
     client = anthropic.Anthropic()
-    with client.messages.stream(
-        model=MODEL, max_tokens=32000, system=SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    ) as stream:
-        msg = stream.get_final_message()
-    text = "".join(b.text for b in msg.content if b.type == "text")
-    return text, msg.usage
-
-
-SCENE_RE = re.compile(r"^\[SCENE:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*kling:\s*(yes|no)\s*\]\s*$",
-                      re.IGNORECASE | re.MULTILINE)
-MOTION_RE = re.compile(r"^\[MOTION:\s*(brand|chart|counter|callout)\s*\|\s*(.+?)\s*\]\s*$",
-                       re.IGNORECASE | re.MULTILINE)
-BEAT_RE = re.compile(r"^\[BEAT:\s*(hook|story|quote|turn|fact)\s*\]\s*$",
-                     re.IGNORECASE | re.MULTILINE)
-ANY_MARK_RE = re.compile(r"^\[(?:SCENE|MOTION|BEAT):.+?\]\s*$", re.IGNORECASE | re.MULTILINE)
+    msgs = [{"role": "user", "content": prompt}]
+    text, usage_in, usage_out = "", 0, 0
+    for attempt in range(4):
+        with client.messages.stream(model=MODEL, max_tokens=32000, system=system or SYSTEM, messages=msgs) as stream:
+            msg = stream.get_final_message()
+        part = "".join(b.text for b in msg.content if b.type == "text")
+        usage_in += msg.usage.input_tokens; usage_out += msg.usage.output_tokens
+        text = (text + "\n" + part).strip() if text else part
+        if not text.strip():                        # отказ с пустым ответом: пробуем ещё раз с нуля
+            print("    · сценарий: пустой ответ (refusal) — повтор")
+            continue
+        spoken = len(ANY_MARK_RE.sub("", text).split())
+        cut = msg.stop_reason != "end_turn" or not text.rstrip().endswith((".", "!", "?", "\"", "»", "]"))
+        short = bool(min_words) and spoken < min_words
+        if not (cut or short):
+            break
+        print(f"    · сценарий: {'обрыв' if cut else 'коротко'} ({spoken} слов, stop={msg.stop_reason}) — продолжаю")
+        msgs = msgs + [{"role": "assistant", "content": text},
+                       {"role": "user", "content": "Продолжай ровно с места, где остановился, до полного сценария нужной длины. "
+                                                   "Не повторяй уже написанное, не начинай заново, без пояснений."}]
+    class U: pass
+    u = U(); u.input_tokens = usage_in; u.output_tokens = usage_out
+    return text, u
 
 
 REMARK_SYSTEM = """Ты расставляешь разметку ритма в готовом сценарии.
@@ -227,6 +311,34 @@ def remark_beats(cfg, ctx, cost) -> dict:
             "words_before": before, "words_after": after}
 
 
+REMARK_SHOTS_SYSTEM = """Ты — режиссёр раскадровки. Тебе дан готовый сценарий с разметкой [BEAT], [SHOT] и [MOTION].
+ЖЁСТКОЕ ПРАВИЛО: текст сценария не меняется НИ ОДНИМ СЛОВОМ; существующие строки разметки сохраняются.
+Ты только ДОБАВЛЯЕШЬ строки [SHOT: ... | wide|medium|close|insert] так, чтобы кадр был перед КАЖДЫМИ 1–2
+предложениями (каждые 5–9 секунд речи). Каждый кадр показывает ровно то, что звучит в следующих предложениях:
+кто (HERO / clerk / officer / nobody), где (локации называть теми же словами, что уже есть в сценарии), что
+именно делает в этот момент, время суток, крупность. Соседние кадры отличаются действием или ракурсом.
+Никаких реальных лиц, логотипов, читаемого текста. Верни весь сценарий целиком, без пояснений."""
+
+
+def remark_shots(ctx, cost) -> dict:
+    """Догоняем плотность раскадровки: [SHOT] каждые 1–2 предложения, текст неизменен (Opus)."""
+    client = anthropic.Anthropic()
+    script = (ctx / "script.md").read_text(encoding="utf-8")
+    with client.messages.stream(model="claude-opus-5", max_tokens=32000, system=REMARK_SHOTS_SYSTEM,
+                                messages=[{"role": "user", "content": script}]) as st:
+        r = st.get_final_message()
+    cost.add("script", "claude-opus-5", claude_cost("claude-opus-5", r.usage), "разметка SHOT")
+    out = "".join(b.text for b in r.content if b.type == "text").strip()
+    before, after = spoken_words(script), spoken_words(out)
+    if abs(after - before) > max(8, before * 0.01):
+        return {"applied": False, "reason": f"текст изменился: было {before} слов, стало {after}"}
+    k = len(list(ctx.glob("script.v*.md"))) + 1
+    (ctx / f"script.v{k}.md").write_text(script, encoding="utf-8")
+    (ctx / "script.md").write_text(out, encoding="utf-8")
+    (ctx / "scenes.json").write_text(json.dumps(parse_scenes(out), ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"applied": True, "shots_before": len(SHOT_RE.findall(script)), "shots_after": len(SHOT_RE.findall(out))}
+
+
 def beat_at(text: str, pos: int) -> str:
     """Тип фрагмента, действующий в этой позиции текста."""
     cur = "exposition"
@@ -244,6 +356,9 @@ def parse_scenes(text: str) -> list[dict]:
     for m in SCENE_RE.finditer(text):
         items.append({"type": "stock", "description": m.group(1), "stock_query": m.group(2),
                       "kling": m.group(3).lower() == "yes", "char_pos": m.start()})
+    for m in SHOT_RE.finditer(text):
+        items.append({"type": "shot", "description": m.group(1), "shot_kind": m.group(2).lower().strip(),
+                      "stock_query": "", "kling": False, "char_pos": m.start()})
     for m in MOTION_RE.finditer(text):
         items.append({"type": "motion", "motion_kind": m.group(1).lower(),
                       "motion_data": m.group(2), "description": f"{m.group(1)}: {m.group(2)[:60]}",

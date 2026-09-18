@@ -40,10 +40,10 @@ for key in ("mondo_startups", "logically_answered"):
         p = R / "thumbs20" / f"{x['id']}.jpg"
         if not p.exists():
             continue
-        r = client.messages.create(model="claude-haiku-4-5", max_tokens=120, messages=[{"role": "user", "content": [
+        r = client.messages.create(model="claude-opus-5", max_tokens=120, messages=[{"role": "user", "content": [
             {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(p.read_bytes()).decode()}},
             {"type": "text", "text": "Есть ли на обложке число (цифры, сумма, процент)? Верни ТОЛЬКО JSON {\"number\": true/false, \"text\": \"весь текст на обложке\"}"}]}])
-        cost += claude_cost("claude-haiku-4-5", r.usage)
+        cost += claude_cost("claude-opus-5", r.usage)
         d = parse_json_block("".join(b.text for b in r.content if b.type == "text"))
         x["thumb_text"] = d.get("text", "")
         (th_num if d.get("number") else th_no).append(x)

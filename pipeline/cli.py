@@ -16,12 +16,13 @@ from .util import CostLog, human_money, mask, slugify
 ARTIFACT = {"brief": "brief.json", "script": "script.md", "critic": "critic.md",
             "voice": "voice.mp3", "shotlist": "shotlist.json",
             "assets": "assets.json", "collage": "collage.json", "screens": "screens.json", "generate": "generate.json",
+            "worldbible": "world.json", "storyboard": "storyboard.json", "stills": "assets.json",
             "motion": "motion.json",
             "assemble": "video.mp4", "review": "review.md",
             "thumbs": "thumbs.json", "meta": "meta.json", "passport": "passport.json"}
 
 # ориентировочная стоимость стадии для --dry-run, USD
-EST = {"brief": 0.45, "script": 1.20, "critic": 0.90, "voice": 2.60, "shotlist": 0.05, "assets": 1.40, "generate": 0.0,
+EST = {"brief": 0.45, "script": 1.20, "critic": 0.90, "voice": 2.60, "shotlist": 0.05, "assets": 1.40, "generate": 0.0, "worldbible": 0.6, "storyboard": 0.5, "stills": 15.0,
        "collage": 0.10, "screens": 0.0, "motion": 0.0, "assemble": 0.0, "review": 0.05, "thumbs": 0.02, "meta": 0.06, "passport": 0.0}
 
 
@@ -44,7 +45,7 @@ def cmd_check(cfg: Config) -> int:
     try:
         import anthropic
         r = anthropic.Anthropic().messages.create(
-            model="claude-haiku-4-5", max_tokens=8,
+            model="claude-opus-5", max_tokens=8,
             messages=[{"role": "user", "content": "ping"}])
         all_ok &= _ok("Anthropic", True, f"ответ получен, {r.usage.input_tokens} вх. токенов")
     except Exception as e:
@@ -199,7 +200,7 @@ def cmd_list_voices(cfg: Config) -> int:
 
 # ── прогон ──────────────────────────────────────────────────────────────────
 def cmd_run(cfg: Config, args) -> int:
-    from .stages import (assemble, assets, brief, collage, critic, generate, meta, motion, passport,
+    from .stages import (assemble, assets, brief, collage, critic, generate, meta, motion, passport, stills, storyboard, worldbible,
                          review, screens, script, shotlist, thumbs)
     topic = args.topic
     if not topic:
@@ -214,6 +215,11 @@ def cmd_run(cfg: Config, args) -> int:
     artifact = dict(ARTIFACT)
     if args.preview:                      # превью не должно засчитывать полный video.mp4
         artifact["assemble"] = "preview.mp4"
+    # два визуальных контура: сток/коллаж (shotlist…assets) и стиллы (worldbible…stills)
+    if (cfg.channel.get("visual_style") or "") == "stills":
+        plan = [s for s in plan if s not in ("shotlist", "screens", "collage", "generate", "assets")]
+    else:
+        plan = [s for s in plan if s not in ("worldbible", "storyboard", "stills")]
     todo = [s for s in plan if args.from_stage or not (ctx / artifact[s]).exists()]
     skipped = [s for s in plan if s not in todo]
 
@@ -258,6 +264,12 @@ def cmd_run(cfg: Config, args) -> int:
             results[s] = assets.run_stage(cfg, ctx, cost, preview_sec=args.preview)
         elif s == "collage":
             results[s] = collage.run_stage(cfg, ctx, cost, preview_sec=args.preview)
+        elif s == "worldbible":
+            results[s] = worldbible.run_stage(cfg, ctx, cost)
+        elif s == "storyboard":
+            results[s] = storyboard.run_stage(cfg, ctx, cost, preview_sec=args.preview)
+        elif s == "stills":
+            results[s] = stills.run_stage(cfg, ctx, cost, preview_sec=args.preview, max_cost_eur=args.max_gen_cost)
         elif s == "generate":
             results[s] = generate.run_stage(cfg, ctx, cost, preview_sec=args.preview, max_cost_eur=args.max_gen_cost)
         elif s == "screens":
@@ -284,7 +296,7 @@ def cmd_run(cfg: Config, args) -> int:
 
 def voice_run(cfg, ctx, cost):
     from .stages import voice
-    return voice.run_stage(cfg, ctx, cost)
+    return voice.run_stage(cfg, ctx, cost, preview_sec=args.preview)
 
 
 def main():

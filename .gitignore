@@ -6,3 +6,10 @@ cache/
 __pycache__/
 node_modules/
 .venv/
+secrets/
+
+# кэш кадров motion — бинарники по 3 МБ, в репозитории не нужны
+pipeline/motion/public/cuts/
+motion/public/cuts/
+*.bak
+*.bak_*

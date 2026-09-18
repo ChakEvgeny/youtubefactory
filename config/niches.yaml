@@ -168,3 +168,127 @@ niches:
     queries:
       en: [top 10 facts, amazing facts]
       de: [top 10 fakten, unglaubliche fakten]
+
+  # ── семейство «простая рисованная графика» (замер 2026-09-10): ниши, где формат —
+  # 2D-иллюстрации / стикмены / карты, как у OverSimplified, Dinzo, Bound ──────────
+  animal_facts_cartoon:
+    rpm_niche_factor: 0.7
+    family: animated
+    description: >-
+      Факты о животных в рисованной подаче: «каково родиться тем-то», самые опасные,
+      как охотятся, что будет если укусит. Не документалки BBC, не влоги с питомцами.
+    queries:
+      en: [born as animal, deadliest animals, animal survival]
+  history_cartoon:
+    rpm_niche_factor: 0.6
+    family: animated
+    description: >-
+      История в мультяшной подаче: войны, империи, персоны — упрощённо и с юмором.
+      Не лекции, не реконструкции с актёрами, не карты без рисунка.
+    queries:
+      en: [oversimplified history, war cartoon, history comic]
+  science_whatif_cartoon:
+    rpm_niche_factor: 0.7
+    family: animated
+    description: >-
+      Наука и «что, если» в анимации: сценарии, физика, космос, тело — простыми
+      рисунками. Не лекции, не сток-документалки.
+    queries:
+      en: [what if you, science cartoon, hypothetical scenario]
+  human_body_cartoon:
+    rpm_niche_factor: 0.9
+    family: animated
+    description: >-
+      Что происходит с телом: болезни, яды, привычки, экстремальные состояния —
+      в 2D-иллюстрациях. Не медицинские лекции, не фитнес-влоги.
+    queries:
+      en: [what happens to your body, human body animated, inside your body]
+  survival_scenarios_cartoon:
+    rpm_niche_factor: 0.8
+    family: animated
+    description: >-
+      Как выжить в ситуации: катастрофа, тюрьма, дикая природа, война — анимированные
+      объяснялки в духе Infographics Show. Не реальные сурвайвл-влоги.
+    queries:
+      en: [how to survive, survival scenario, escape animated]
+  economics_cartoon:
+    rpm_niche_factor: 1.1
+    family: animated
+    description: >-
+      Экономика и деньги простыми рисунками: почему дорого, как работает рынок,
+      где деньги. Не биржевые советы, не крипта.
+    queries:
+      en: [economy animated, how money works, why so expensive]
+  mythology_religion_cartoon:
+    rpm_niche_factor: 0.6
+    family: animated
+    description: >-
+      Мифология и религиозные сюжеты в анимации: боги, легенды, библейские истории.
+      Не проповеди, не эзотерика.
+    queries:
+      en: [mythology animated, bible animated, gods explained]
+  horror_stories_animated:
+    rpm_niche_factor: 0.5
+    family: animated
+    description: >-
+      Страшные истории и криминальные случаи в анимации. Проверить ad-safety:
+      без крови и насилия в кадре.
+    queries:
+      en: [animated horror story, scary story animated, true story animated]
+  selfimprovement_stick:
+    rpm_niche_factor: 1.3
+    family: animated
+    description: >-
+      Саморазвитие, стоицизм, привычки, психология поведения — стикмены и простые
+      схемы. Не мотивационные нарезки, не коучи на камеру.
+    queries:
+      en: [stoic lessons, habits animated, psychology animated]
+  prison_crime_cartoon:
+    rpm_niche_factor: 0.7
+    family: animated
+    description: >-
+      Как устроена тюрьма, побеги, аферы, как работают преступники — анимированные
+      разборы. Не тру-крайм с фотографиями жертв.
+    queries:
+      en: [inside prison, prison escape, heist animated]
+  daily_life_history_cartoon:
+    rpm_niche_factor: 0.6
+    family: animated
+    description: >-
+      Как жили люди в разные эпохи: быт, еда, гигиена, работа — рисованные
+      объяснялки. Не лекции, не реконструкции.
+    queries:
+      en: [medieval life, daily life history, life in ancient]
+  philosophy_cartoon:
+    rpm_niche_factor: 0.8
+    family: animated
+    description: >-
+      Философия и большие идеи в простых рисунках: школы мысли, парадоксы,
+      мыслители. Не университетские лекции.
+    queries:
+      en: [philosophy animated, paradox explained, thinkers ideas]
+  # ── семейство «стилизованная 3D-анимация» (видно, что анимация; не псевдореализм) ──
+  crime_stories_3d:
+    rpm_niche_factor: 0.8
+    family: animated3d
+    description: >-
+      Истории преступлений, афер и ограблений в стилизованной 3D-анимации с безликими
+      персонажами (как Blackfiles/Lume). Не документалки с реальными фото жертв.
+    queries:
+      en: [heist story animated, scam story animated, crime story 3d]
+  history_stories_3d:
+    rpm_niche_factor: 0.6
+    family: animated3d
+    description: >-
+      Исторические и библейские сюжеты как анимационные истории (стилизованные 3D-персонажи,
+      Pixar-подобный стиль). Не лекции, не ИИ-«реалистичные» картины.
+    queries:
+      en: [animated history story, animated bible story, 3d animated history]
+  science_stories_3d:
+    rpm_niche_factor: 0.8
+    family: animated3d
+    description: >-
+      Наука, тело, космос как анимационные истории с 3D-персонажами и сценами. Не лекции,
+      не сон-контент.
+    queries:
+      en: [3d animated science, animated explainer story, what if animated 3d]

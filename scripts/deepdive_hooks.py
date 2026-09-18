@@ -6,7 +6,7 @@ import anthropic
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
-MODEL = "claude-haiku-4-5"
+MODEL = "claude-opus-5"
 SC = Path(sys.argv[1])
 load_dotenv(ROOT / ".env")
 client = anthropic.Anthropic()

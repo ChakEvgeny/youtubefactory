@@ -29,8 +29,8 @@ prompt = ("Ниже заголовки YouTube-роликов жанра busines
           "'finally_bursting', 'how_brand_lost', 'backfires', 'no_one_uses'). Одинаковые по структуре заголовки "
           "должны получить ОДИНАКОВУЮ маску. Верни ТОЛЬКО JSON: {\"items\":[{\"i\":0,\"mask\":\"...\",\"family\":\"...\"}]}\n\n"
           + "\n".join(f"{i}. {r['title']}" for i, r in enumerate(rows)))
-r = client.messages.create(model="claude-haiku-4-5", max_tokens=4000, messages=[{"role": "user", "content": prompt}])
-cost = claude_cost("claude-haiku-4-5", r.usage)
+r = client.messages.create(model="claude-opus-5", max_tokens=4000, messages=[{"role": "user", "content": prompt}])
+cost = claude_cost("claude-opus-5", r.usage)
 items = parse_json_block("".join(b.text for b in r.content if b.type == "text"))["items"]
 for it in items:
     rows[it["i"]]["mask"], rows[it["i"]]["family"] = it["mask"], it["family"]
@@ -40,8 +40,8 @@ prompt2 = ("Вот маски заголовков и их семейства. �
            "объединяй, у каждого семейства — одна каноническая маска (с теми же плейсхолдерами) и список номеров "
            "исходных заголовков. Верни ТОЛЬКО JSON: {\"families\":[{\"family\":\"...\",\"mask\":\"...\",\"items\":[0,3]}]}\n\n"
            + "\n".join(f"{i}. [{r.get('family')}] {r.get('mask')}  <- {r['title']}" for i, r in enumerate(rows)))
-r2 = client.messages.create(model="claude-haiku-4-5", max_tokens=3000, messages=[{"role": "user", "content": prompt2}])
-cost += claude_cost("claude-haiku-4-5", r2.usage)
+r2 = client.messages.create(model="claude-opus-5", max_tokens=3000, messages=[{"role": "user", "content": prompt2}])
+cost += claude_cost("claude-opus-5", r2.usage)
 for fmly in parse_json_block("".join(b.text for b in r2.content if b.type == "text"))["families"]:
     for i in fmly["items"]:
         if 0 <= i < len(rows):

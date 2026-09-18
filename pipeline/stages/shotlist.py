@@ -14,7 +14,7 @@ import anthropic
 
 from ..util import claude_cost, parse_json_block
 
-MODEL = "claude-haiku-4-5"
+MODEL = "claude-opus-5"        # типизация кадров: Haiku обрезала JSON батча
 BATCH = 25
 
 SYSTEM = (
@@ -396,31 +396,41 @@ def run_stage(cfg, ctx: Path, cost) -> dict:
                 sh["query_from"] = "fallback"
 
     # ── субъект / пресса / факт для каждого кадра ─────────────────────────
-    for i in range(0, len(need), BATCH):
-        chunk = need[i:i + BATCH]
+    def type_chunk(chunk: list[dict], max_tokens: int = 6000):
+        """Один батч типизации. Обрезанный/битый JSON — повтор половинками:
+        без субъектов весь батч уходит в карточки, и превью превращается в плашки."""
         listing = "\n\n".join(f'shot {sh["idx"]} ({sh["dur"]}с)\nЗВУЧИТ: {sh["text"][:220] or "(без слов)"}'
                                for sh in chunk)
         try:
-            r = client.messages.create(model=MODEL, max_tokens=4000, system=TYPE_SYSTEM,
+            r = client.messages.create(model=MODEL, max_tokens=max_tokens, system=TYPE_SYSTEM,
                                        messages=[{"role": "user", "content": listing}])
             cost.add("shotlist", MODEL, claude_cost(MODEL, r.usage), f"субъекты {chunk[0]['idx']}+")
             q = parse_json_block("".join(b.text for b in r.content if b.type == "text"))
-            byid = {}
-            for k, v in q.items():
-                d = re.findall(r"\d+", str(k))
-                if d and isinstance(v, dict):
-                    byid[int(d[-1])] = v
-            for sh in chunk:
-                v = byid.get(sh["idx"], {})
-                sh["subject"] = v.get("subject") or None
-                sh["subject_type"] = v.get("subject_type") or None
-                sh["subject_query"] = (v.get("query") or sh.get("subject") or "")[:70]
-                sh["fact"] = (v.get("fact") or "")[:60]
-                sh["press"] = v.get("press") or None
-                sh["visual"] = (v.get("visual") or "")[:60] or None
-                sh["visual_type"] = v.get("visual_type") or None
         except Exception as e:
-            print(f"    ! типизация кадров {chunk[0]['idx']}+: {str(e)[:80]}")
+            if len(chunk) > 4:
+                half = len(chunk) // 2
+                type_chunk(chunk[:half], max_tokens)
+                type_chunk(chunk[half:], max_tokens)
+            else:
+                print(f"    ! типизация кадров {chunk[0]['idx']}+: {str(e)[:80]}")
+            return
+        byid = {}
+        for k, v in q.items():
+            d = re.findall(r"\d+", str(k))
+            if d and isinstance(v, dict):
+                byid[int(d[-1])] = v
+        for sh in chunk:
+            v = byid.get(sh["idx"], {})
+            sh["subject"] = v.get("subject") or None
+            sh["subject_type"] = v.get("subject_type") or None
+            sh["subject_query"] = (v.get("query") or sh.get("subject") or "")[:70]
+            sh["fact"] = (v.get("fact") or "")[:60]
+            sh["press"] = v.get("press") or None
+            sh["visual"] = (v.get("visual") or "")[:60] or None
+            sh["visual_type"] = v.get("visual_type") or None
+
+    for i in range(0, len(need), BATCH):
+        type_chunk(need[i:i + BATCH])
     budget = {**BUDGET, **(cfg.defaults.get("shot_budget") or {})}
     gen_on = bool({**(cfg.defaults.get("gen") or {}), **(cfg.channel.get("gen") or {})}.get("enabled"))
     if gen_on and cfg.defaults.get("shot_budget_gen"):

@@ -18,6 +18,10 @@ PRICES = {
     "veo-3.1-generate-preview": {"720p": 0.40, "1080p": 0.40, "4k": 0.60},
     "veo-3.1-fast-generate-preview": {"720p": 0.10, "1080p": 0.12, "4k": 0.30},
     "veo-3.1-lite-generate-preview": {"720p": 0.05, "1080p": 0.08},
+    # те же модели на Vertex AI (GA-идентификаторы), цены те же
+    "veo-3.1-generate-001": {"720p": 0.40, "1080p": 0.40, "4k": 0.60},
+    "veo-3.1-fast-generate-001": {"720p": 0.10, "1080p": 0.12, "4k": 0.30},
+    "veo-3.1-lite-generate-001": {"720p": 0.05, "1080p": 0.08},
     "gen4.5": {"any": 0.12}, "gen4_turbo": {"any": 0.05},
     "runway:veo3.1": {"any": 0.40}, "runway:veo3.1_fast": {"any": 0.15},
     "kling": {"std": 0.056, "pro": 0.098},     # ~$0.28 / $0.49 за 5 с
@@ -37,21 +41,26 @@ def _b64(path: Path) -> tuple[str, str]:
 # ── Veo 3.1 через google-genai ────────────────────────────────────────────────
 def veo(cfg, prompt: str, out: Path, seconds: int = 6, image: Path | None = None,
         model: str = "veo-3.1-fast-generate-preview", resolution: str = "720p",
-        negative: str = "", reference_images: list[Path] | None = None, timeout: int = 600) -> dict:
+        negative: str = "", reference_images: list[Path] | None = None, timeout: int = 600,
+        last_frame: Path | None = None) -> dict:
     from google import genai
     from google.genai import types
-    key = cfg.key("GOOGLE_API_KEY")
-    if not key:
-        raise RuntimeError("нет GOOGLE_API_KEY")
-    client = genai.Client(api_key=key)
+    from .genimage import gclient
+    client = gclient(cfg)
+    if getattr(client, "vertexai", False) and model.endswith("-preview"):
+        model = model.replace("-preview", "-001")          # на Vertex у Veo 3.1 GA-идентификаторы
     kw: dict = {}
     if image:
         data, mime = _b64(image)
         kw["image"] = types.Image(image_bytes=base64.b64decode(data), mime_type=mime)
+    seconds = min((4, 6, 8), key=lambda x: (abs(x - seconds), -x))   # Veo принимает только 4/6/8
     conf: dict = {"aspect_ratio": "16:9", "resolution": resolution, "duration_seconds": int(seconds),
-                  "person_generation": "allow_adult" if image else "allow_all"}
+                  "person_generation": "allow_adult"}     # в EU/UK допустим только allow_adult
     if negative:
         conf["negative_prompt"] = negative
+    if last_frame and image and Path(last_frame).exists():       # first & last frame: конечное состояние задаёт картинка
+        lf_data, lf_mime = _b64(Path(last_frame))
+        conf["last_frame"] = types.Image(image_bytes=base64.b64decode(lf_data), mime_type=lf_mime)
     refs = [p for p in (reference_images or []) if Path(p).exists()][:3]
     if refs and not image:
         conf["duration_seconds"] = 8                 # референсы требуют 8 с
@@ -71,8 +80,13 @@ def veo(cfg, prompt: str, out: Path, seconds: int = 6, image: Path | None = None
     if not vids:
         raise RuntimeError("veo: пустой ответ (фильтр безопасности?)")
     v = vids[0]
-    client.files.download(file=v.video)
-    v.video.save(str(out))
+    if getattr(v.video, "video_bytes", None):            # Vertex отдаёт байты
+        out.write_bytes(v.video.video_bytes)
+    elif getattr(v.video, "uri", "") and str(v.video.uri).startswith("gs://"):
+        raise RuntimeError(f"veo: результат в GCS ({v.video.uri}) — задай output без bucket или скачай через storage")
+    else:
+        client.files.download(file=v.video)
+        v.video.save(str(out))
     return {"file": str(out), "provider": "veo", "model": model, "seconds": conf["duration_seconds"],
             "usd": price(model, conf["duration_seconds"], resolution), "audio": True,
             "elapsed": round(time.time() - t0, 1)}

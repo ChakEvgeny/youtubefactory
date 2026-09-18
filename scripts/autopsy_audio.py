@@ -85,7 +85,7 @@ def parse_json3(p: Path) -> list[dict]:
 
 
 def load_words(video: Path) -> list[dict]:
-    j = sorted(video.parent.glob("subs*.json3"))
+    j = sorted(video.parent.glob("subs*.json3")) or sorted(video.parent.glob("*.json3"))
     if j:
         return parse_json3(j[0])
     vtts = sorted(video.parent.glob(video.stem + ".en.vtt")) or sorted(video.parent.glob(video.stem + "*.vtt"))
@@ -151,7 +151,7 @@ def structure(words: list[dict], dur: float, info: dict, client) -> dict:
                   "(«но», неожиданный факт, смена темы с успеха на провал). Верни ТОЛЬКО JSON: "
                   "{\"turn_quote\":\"дословная фраза\",\"why\":\"кратко по-русски\"}")
         try:
-            r = client.messages.create(model="claude-haiku-4-5", max_tokens=300,
+            r = client.messages.create(model="claude-opus-5", max_tokens=300,
                                        messages=[{"role": "user", "content": prompt}])
             d = parse_json_block("".join(b.text for b in r.content if b.type == "text"))
             q = (d.get("turn_quote") or "").strip()
@@ -163,7 +163,7 @@ def structure(words: list[dict], dur: float, info: dict, client) -> dict:
                     pos = words[i]["t"]
                     break
             turn = {"quote": q[:160], "why": d.get("why", ""), "t": round(pos, 1) if pos is not None else None,
-                    "cost": claude_cost("claude-haiku-4-5", r.usage)}
+                    "cost": claude_cost("claude-opus-5", r.usage)}
         except Exception as e:
             turn = {"error": str(e)[:80]}
     return {"first60": first60[:1200], "last30": last30[:700],

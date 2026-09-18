@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 from supabase import create_client
 
 ROOT = Path(__file__).resolve().parent.parent
-MODEL = "claude-haiku-4-5"
+MODEL = "claude-opus-5"
 BATCH = 40
 DESC_CHARS = 300
 MIN_DURATION_SEC = 180
@@ -56,9 +56,20 @@ def parse_json_object(text: str) -> dict:
     t = text.strip()
     t = re.sub(r"^```(?:json)?\s*|\s*```$", "", t, flags=re.MULTILINE).strip()
     start, end = t.find("{"), t.rfind("}")
-    if start == -1 or end == -1:
+    if start != -1 and end != -1:
+        try:
+            return json.loads(t[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+    # обрезанный/битый ответ: спасаем пары "id": значение регулярным выражением
+    pairs = re.findall(r'"([A-Za-z0-9_-]{6,})"\s*:\s*("?[A-Za-z0-9_]+"?)', t)
+    if not pairs:
         raise ValueError(f"в ответе нет JSON-объекта: {text[:200]!r}")
-    return json.loads(t[start:end + 1])
+    out = {}
+    for k, v in pairs:
+        v = v.strip('"')
+        out[k] = int(v) if v.isdigit() else v
+    return out
 
 
 def classify(client, niche_desc: str, rows: list[dict]) -> dict:
@@ -74,7 +85,7 @@ def classify(client, niche_desc: str, rows: list[dict]) -> dict:
     )
     resp = client.messages.create(
         model=MODEL,
-        max_tokens=2000,
+        max_tokens=4000,
         system=SYSTEM,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -102,7 +113,7 @@ def classify_format(client, rows: list[dict]):
                         "text": f"video_id: {v['id']} — {(v.get('title') or '')[:120]}"})
         content.append({"type": "image", "source": {"type": "url", "url": thumb_url(v)}})
     resp = client.messages.create(
-        model=MODEL, max_tokens=1000, system=SYSTEM_FORMAT,
+        model=MODEL, max_tokens=1500, system=SYSTEM_FORMAT,
         messages=[{"role": "user", "content": content}],
     )
     text = "".join(b.text for b in resp.content if b.type == "text")
@@ -211,9 +222,23 @@ def main():
             import anthropic
             client = anthropic.Anthropic()
 
+            def classify_safe(chunk):
+                """Битый ответ (эхо списка, обрыв) -> повтор половинками, потом пропуск батча."""
+                try:
+                    return classify(client, desc, chunk)
+                except ValueError as e:
+                    if len(chunk) > 5:
+                        a, b = chunk[: len(chunk) // 2], chunk[len(chunk) // 2:]
+                        la, ua = classify_safe(a)
+                        lb, ub = classify_safe(b)
+                        ua.input_tokens += ub.input_tokens; ua.output_tokens += ub.output_tokens
+                        return {**la, **lb}, ua
+                    print(f"   ! батч {len(chunk)} пропущен: {str(e)[:80]}")
+                    class U: input_tokens = 0; output_tokens = 0
+                    return {}, U()
             for i in range(0, len(rows), args.batch):
                 chunk = rows[i:i + args.batch]
-                labels, usage = classify(client, desc, chunk)
+                labels, usage = classify_safe(chunk)
                 total_in += usage.input_tokens
                 total_out += usage.output_tokens
                 ones = [k for k, v in labels.items() if v == 1]

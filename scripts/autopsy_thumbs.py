@@ -33,10 +33,10 @@ def analyse(thumb: Path, client) -> dict:
     content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
                                             "data": base64.b64encode(thumb.read_bytes()).decode()}},
                {"type": "text", "text": "Разбери обложку."}]
-    r = client.messages.create(model="claude-haiku-4-5", max_tokens=600, system=SYSTEM,
+    r = client.messages.create(model="claude-opus-5", max_tokens=600, system=SYSTEM,
                                messages=[{"role": "user", "content": content}])
     d = parse_json_block("".join(b.text for b in r.content if b.type == "text"))
-    d["cost"] = round(claude_cost("claude-haiku-4-5", r.usage), 4)
+    d["cost"] = round(claude_cost("claude-opus-5", r.usage), 4)
     return d
 
 

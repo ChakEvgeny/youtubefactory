@@ -105,7 +105,7 @@ def rank_sources(press: str, text: str, sources: list[dict], used: dict | None =
         if needle and needle in (url + " " + s.get("source_title", "")).lower():
             sc += 5
         sc -= 1.5 * used.get(url, 0)
-        if sc >= (1 if not press else 2):
+        if sc >= 2:
             scored.append((sc, s))
     scored.sort(key=lambda x: -x[0])
     return [s for _, s in scored]
@@ -141,9 +141,6 @@ def run_stage(cfg, ctx: Path, cost, preview_sec: float | None = None) -> dict:
         cands = rank_sources(press, sh.get("text", ""), sources, used, dead)
         if not cands:                            # по кадру пусто -> по всей сцене
             cands = rank_sources(press, scene_text.get(sh.get("scene"), ""), sources, used, dead)
-        if not cands and not press:              # все факты брифа — про эту историю: наименее показанный
-            cands = sorted([x for x in sources if x.get("source_url") and x["source_url"] not in dead],
-                           key=lambda x: used.get(x["source_url"], 0))
         # до трёх кандидатов: недоступный сайт запоминаем и больше не пробуем
         for cand in cands[:3]:
             shot = screenshot(cand["source_url"], cache)

@@ -31,7 +31,7 @@ def run_stage(cfg, ctx: Path, cost, results: dict, topic: str) -> dict:
         "sources": meta.get("sources", []),
         "models": {"research": "claude-opus-5", "script": "claude-fable-5-1",
                    "critic": "claude-opus-5", "meta": "claude-opus-5",
-                   "thumbs_vision": "claude-haiku-4-5"},
+                   "thumbs_vision": "claude-opus-5"},
         "voice_id": ts.get("voice_id"), "voice_model": ts.get("model"),
         "critic_notes": results.get("critic", {}),
         "cost": cost.to_json(), "cost_total": cost.total,

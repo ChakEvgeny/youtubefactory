@@ -22,7 +22,7 @@ load_dotenv(ROOT / ".env")
 sys.path.insert(0, str(ROOT))
 from pipeline.util import claude_cost, parse_json_block  # noqa: E402
 
-MODEL = "claude-haiku-4-5"
+MODEL = "claude-opus-5"
 STEP = 2.0
 GRID = 3
 CLASSES = ["cutout-collage", "article-screenshot", "logo-brand-card", "stock-video", "ai-image",

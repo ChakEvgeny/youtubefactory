@@ -1,0 +1,92 @@
+# Разведка «что хайпует сейчас» под наш контур stylized-3D.
+# Критерий отбора ниши в список: сюжет можно показать безликими фигурами и
+# предметами, без реальной съёмки, без лиц реальных людей, без gore.
+# Окно — 90 дней, язык только en, бэкенд поиска yt-dlp (бесплатно).
+
+languages:
+  en: {region: US, rpm_estimate: 6.5}
+
+niches:
+  heist_stories:
+    rpm_niche_factor: 1.1
+    description: "Ненасильственные ограбления и аферы, пересказ по судебным документам."
+    queries:
+      en: [heist story, stole millions]
+
+  scam_schemes:
+    rpm_niche_factor: 1.2
+    description: "Схемы обмана, финансовые пирамиды, обманутые корпорации и банки."
+    queries:
+      en: [scam exposed, ponzi scheme]
+
+  legal_loopholes:
+    rpm_niche_factor: 1.2
+    description: "Люди, выигравшие у системы, прочитав правила буквально; странные законы."
+    queries:
+      en: [legal loophole, beat the system]
+
+  gambling_math:
+    rpm_niche_factor: 1.3
+    description: "Казино, лотереи, преимущество игрока, математика ставок."
+    queries:
+      en: [beat the casino, lottery loophole]
+
+  counterfeit_forgery:
+    rpm_niche_factor: 1.0
+    description: "Фальшивомонетчики, подделка картин и документов, как их ловили."
+    queries:
+      en: [master forger, counterfeit money]
+
+  startup_frauds:
+    rpm_niche_factor: 1.3
+    description: "Стартапы-обманки, фальшивые технологии, крах на инвесторских деньгах."
+    queries:
+      en: [startup fraud, fake company]
+
+  aviation_incidents:
+    rpm_niche_factor: 1.0
+    description: "Авиапроисшествия и почти-катастрофы через инженерную причину, без жертв в кадре."
+    queries:
+      en: [aviation disaster, close call flight]
+
+  survival_ordeals:
+    rpm_niche_factor: 0.9
+    description: "Выживание после аварии, потери в глуши, спасательные операции."
+    queries:
+      en: [survival story, lost at sea]
+
+  prison_escapes:
+    rpm_niche_factor: 0.9
+    description: "Побеги из тюрем, как именно они были устроены."
+    queries:
+      en: [prison escape, escaped prison]
+
+  cult_stories:
+    rpm_niche_factor: 0.9
+    description: "Секты и закрытые организации: механика вербовки и распада."
+    queries:
+      en: [cult story, inside a cult]
+
+  corporate_espionage:
+    rpm_niche_factor: 1.2
+    description: "Кража технологий и секретов между компаниями и странами."
+    queries:
+      en: [corporate espionage, stolen secrets]
+
+  sports_cheating:
+    rpm_niche_factor: 1.0
+    description: "Мошенничество в спорте: договорные матчи, допинг, подмены."
+    queries:
+      en: [cheating scandal, rigged game]
+
+  missing_mysteries:
+    rpm_niche_factor: 0.8
+    description: "Исчезновения и нераскрытые дела без графики насилия."
+    queries:
+      en: [unsolved disappearance, vanished without trace]
+
+  money_systems:
+    rpm_niche_factor: 1.4
+    description: "Как устроены деньги, банки, страховки; где в системе дыры."
+    queries:
+      en: [how banks work, money explained]

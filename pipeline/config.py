@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 from .util import ROOT, slugify
 
-STAGES = ["brief", "script", "critic", "voice", "shotlist", "screens",
+STAGES = ["brief", "script", "critic", "voice", "worldbible", "storyboard", "stills", "shotlist", "screens",
           "collage", "generate", "assets", "motion", "assemble", "review", "thumbs", "meta", "passport"]
 
 REQUIRED_KEYS = ["ANTHROPIC_API_KEY", "ELEVENLABS_API_KEY", "PEXELS_API_KEY",

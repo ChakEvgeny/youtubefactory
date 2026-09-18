@@ -81,6 +81,7 @@ def run(cfg, ctx, topic: str, cost, angle: str | None = None,
         md += [f"- {q}" for q in data["open_questions"]]
 
     (ctx / "brief.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+    data["topic"] = topic                       # сценарию и библии мира нужна тема
     (ctx / "brief.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     return {"facts": len(facts), "added": added, "dropped": dropped,
             "angle": data.get("angle", "")[:80]}

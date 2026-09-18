@@ -33,7 +33,7 @@ for niche, d in data.items():
                 "признана ad-unfriendly (забой, разделка). НЕ предлагай такие темы и не "
                 "используй их как доказательство спроса.")
     r = client.messages.create(
-        model="claude-haiku-4-5", max_tokens=3000, system=SYS,
+        model="claude-opus-5", max_tokens=3000, system=SYS,
         messages=[{"role": "user", "content": f"НИША: {niche}\nРОЛИКИ:\n" + "\n".join(lines) + warn}])
     tin += r.usage.input_tokens; tout += r.usage.output_tokens
     t = "".join(b.text for b in r.content if b.type == "text")

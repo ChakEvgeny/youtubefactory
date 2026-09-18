@@ -109,7 +109,7 @@ def kling_auth(cfg) -> str | None:
     return "Bearer " + (head + b"." + body + b"." + sig).decode()
 
 
-VISION = "claude-haiku-4-5"
+VISION = "claude-opus-5"      # Haiku резала JSON и отбраковывала лишнее; +$0.3/ролик
 VISION_SYS = (
     "Ты выбираешь стоковый кадр под конкретный момент ролика. Тебе дают текст, "
     "который в этот момент звучит, и несколько превью-кадров.\n"

@@ -10,7 +10,7 @@ import anthropic
 
 from ..util import claude_cost, ffprobe_duration, parse_json_block, run
 
-VISION = "claude-haiku-4-5"
+VISION = "claude-opus-5"      # Haiku резала JSON и отбраковывала лишнее; +$0.3/ролик
 
 
 def best_frames(video: Path, out_dir: Path, n: int = 3) -> list[Path]:

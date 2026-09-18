@@ -95,7 +95,7 @@ def fx_filter(fx: str, dur: float, w: int, h: int) -> str:
 
 
 def build_clip(entry: dict, dur: float, w: int, h: int, fps: int, out: Path,
-               fx: str = "cut", fade_in: float = 0.0, fade_out: float = 0.0):
+               fx: str = "cut", fade_in: float = 0.0, fade_out: float = 0.0, hold: bool = False):
     """Нормализует один ассет в клип нужной длительности с эффектом по типу кадра."""
     src = entry.get("file")
     fades = ""
@@ -108,32 +108,30 @@ def build_clip(entry: dict, dur: float, w: int, h: int, fps: int, out: Path,
              "-i", f"color=c=black:s={w}x{h}:d={dur:.2f}:r={fps}",
              "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", str(out)])
         return
-    if src.endswith(".jpg"):
-        frames = max(int(dur * fps), 2)
-        slow = fx in ("kenburns_slow", "zoomout")
-        zmax = 1.06 if slow else 1.14
-        step = (zmax - 1.0) / frames
-        z = (f"min(zoom+{step:.5f},{zmax})" if fx != "zoomout"
-             else f"if(lte(zoom,1.0),{zmax},max(1.001,zoom-{step:.5f}))")
-        if fx == "punch":
-            z = f"1+0.10*pow(1-min(on/{fps*0.35:.1f},1),3)+0.03*on/{frames}"
-        vf = (f"scale={w*2}:{h*2}:force_original_aspect_ratio=increase,crop={w*2}:{h*2},"
-              f"zoompan=z='{z}':d={frames}:s={w}x{h}:fps={fps},setsar=1{fades}")
-        run(["ffmpeg", "-y", "-v", "error", "-loop", "1", "-t", f"{dur:.2f}", "-i", src,
-             "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", str(out)])
+    if src.lower().endswith((".jpg", ".jpeg", ".png")):
+        # стилл: зацикленный кадр на dur секунд + тот же crop-фильтр движения, что и у видео
+        # (zoompan с d=frames размножал каждый входной кадр — клип на минуты вместо секунд)
+        vf = fx_filter(fx if fx != "cut" else "kenburns_slow", dur, w, h) + f",fps={fps}" + fades
+        run(["ffmpeg", "-y", "-v", "error", "-loop", "1", "-framerate", str(fps), "-t", f"{dur:.2f}", "-i", src,
+             "-vf", vf, "-t", f"{dur:.2f}", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", str(out)])
         return
     sd = ffprobe_duration(Path(src)) or dur
     speed = 1.25 if fx == "speedramp" else 1.0
     need = dur * speed
     cmd = ["ffmpeg", "-y", "-v", "error"]
-    if sd < need:
+    if sd < need and hold:
+        pass                                     # добьём слот последним кадром (tpad), не повтором анимации
+    elif sd < need:
         cmd += ["-stream_loop", str(int(need // max(sd, 0.5)) + 1)]
     elif sd > need + 1.0:                    # разные куски одного файла, не всегда начало
         cmd += ["-ss", f"{min((sd - need) * 0.35, sd - need):.2f}"]
     vf = fx_filter(fx, dur, w, h)
     if speed != 1.0:
         vf = f"setpts=PTS/{speed}," + vf
-    vf += f",fps={fps}" + fades
+    vf += f",fps={fps}"
+    if sd < need and hold:
+        vf += f",tpad=stop_mode=clone:stop_duration={need - sd + 0.5:.2f}"
+    vf += fades
     # -t здесь — выходная опция: длина слота, а не длина прочитанного источника
     # (при speedramp source читается на need=dur*1.25, но выход обязан быть dur)
     cmd += ["-i", src, "-t", f"{dur:.2f}", "-an", "-vf", vf,
@@ -263,12 +261,13 @@ def run_stage(cfg, ctx: Path, cost, preview_sec: float | None = None) -> dict:
         nxt = shots[i + 1] if i + 1 < len(shots) else None
         # ключ клипа — содержимое, а не номер кадра: при пересборке с другим источником
         # старый клип по тому же idx не должен подхватываться
-        key = sha1("clip", f"{src}|{dur:.2f}|{fx}|{int(dip)}|{int(bool(nxt and nxt.get('dip_before')))}")[:16]
+        key = sha1("clip", f"{src}|{dur:.2f}|{fx}|{int(dip)}|{int(bool(nxt and nxt.get('dip_before')))}|hold2")[:16]
         c = tmp / f"s{sh['idx']:04d}_{key}.mp4"
         if not c.exists():
             build_clip({"file": src}, max(dur, 0.5), w, h, fps, c, fx=fx,
                        fade_in=0.15 if dip else 0.0,
-                       fade_out=0.15 if (nxt and nxt.get("dip_before")) else 0.0)
+                       fade_out=0.15 if (nxt and nxt.get("dip_before")) else 0.0,
+                       hold=sh.get("source") in ("motion", "card", "collage", "screens", "gen", "still"))
         seq.append(c)
     if not seq:
         raise SystemExit("нет кадров для сборки")
@@ -290,7 +289,8 @@ def run_stage(cfg, ctx: Path, cost, preview_sec: float | None = None) -> dict:
         hook_end = 0.0
     total = max(total, max((sh["end"] for sh in shots), default=total))   # закрывающий план
     mdir = cfg.paths.music_dir
-    tense, resolve = mdir / "jlr_tense.mp3", mdir / "jlr_resolve.mp3"
+    mp = cfg.channel.get("music_prefix", "jlr")
+    tense, resolve = mdir / f"{mp}_tense.mp3", mdir / f"{mp}_resolve.mp3"
     if not tense.exists():
         tense = pick_music(mdir)
     music_ok = bool(tense and tense.exists())

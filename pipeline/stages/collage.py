@@ -18,16 +18,17 @@ from ..cutout import cutout
 from ..sources import commons
 from ..util import SeenFrames, Cache, claude_cost, parse_json_block, run, sha1
 
-VISION = "claude-haiku-4-5"
+VISION = "claude-opus-5"      # Haiku резала JSON и отбраковывала лишнее; +$0.3/ролик
 VISION_SYS = (
     "Ты выбираешь фотографию для коллажа в документальном ролике. Нужен кадр, где НАЗВАННЫЙ "
     "субъект — главный и единственный объект: портрет человека (не толпа, не групповое фото), "
     "одна машина/модель, одно здание. Групповые снимки, где субъект — один из многих, "
-    "не годятся. Логотипы и вывески чужих компаний в кадре — минус.\\n"
+    "не годятся. Читаемые логотипы, бренд-стены (пресс-волл, стенд), вывески и водяные знаки — брак.\\n"
     "Отвечай ТОЛЬКО JSON: {\"best\": <индекс с нуля или -1>, \"score\": <0-10>, "
     "\"portrait\": true|false, \"modern\": true|false (снимок нашего времени, не архив "
     "другой эпохи), \"other_person\": true|false (в кадре узнаваемое или частное лицо, "
     "которое НЕ является субъектом), \"readable\": true|false (кадр светлый и различимый), "
+    "\"logos\": true|false (в кадре читаемые логотипы, бренд-стена, вывеска или водяной знак), "
     "\"why\": \"кратко по-русски\"}"
 )
 PUBLIC = "cuts"
@@ -98,6 +99,8 @@ def pick(client, subject: str, stype: str, cands: list[dict], cache: Cache, cost
         hard.append("чужое лицо")
     if not d.get("readable", True):
         hard.append("нечитаемо")
+    if d.get("logos"):
+        hard.append("логотипы")
     if bi < 0 or bi >= len(shown) or score < min_score or hard:
         print(f"    · vision отверг «{subject}»: best={bi} score={score} {'/'.join(hard)} — {str(d.get('why',''))[:70]}")
         return None
@@ -176,7 +179,8 @@ def run_stage(cfg, ctx: Path, cost, preview_sec: float | None = None) -> dict:
                 continue
             chosen = res
             break
-        chosen = chosen or best
+        # персона: только чистый портрет; групповое фото с чужими лицами — никогда, лучше quote-карточка
+        chosen = chosen or (best if stype != "person" else None)
         if chosen:
             used_urls.add(chosen["url"])
             if chosen.get("file"):

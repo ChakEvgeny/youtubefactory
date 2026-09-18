@@ -331,3 +331,59 @@ channels:
     - Отрицание общего мнения о безопасности проекта
     - Астрономическая сумма проекта как контраст провалу
     kling_bias: low
+  heists:
+    id: heists
+    niche: heist_stories
+    primary: true
+    subniche: 'Один обычный человек против большой компании или системы: афёры, схемы, ограбления без насилия'
+    voice_id: onwK4e9ZLuTAKqWW03F9
+    target_minutes:
+    - 18
+    - 22
+    format_reference: Mondo Startups (8 180 подписчиков, каналу 13 месяцев, v/s до 35) — обложка строится как стилизованный
+      вордмарк бренда плюс 2-3 слова приговора. Ни лиц, ни плашек новостных каналов, ни имитации эфира.
+    visual_style: stills
+    thumb_palette:
+    - '#2EE59D'
+    - '#FFFFFF'
+    - '#0B0F14'
+    thumb_rules:
+      big_text: true
+      max_words: 3
+      faces: false
+      brand_wordmark: true
+      news_chrome: false
+    motion_share:
+    - 0.2
+    - 0.3
+    grade:
+      contrast: 1.06
+      saturation: 0.85
+      brightness: -0.02
+      grain: 5
+    title_templates:
+    - '{BRAND} Lost ${SUM} to One {ORDINARY ROLE} With a {EVERYDAY OBJECT}'
+    - The {ROLE} Who {IMPOSSIBLE ACTION} From {SUPERLATIVE SYSTEM}
+    - One Fake Company in {PLACE} Billed {BRAND} ${SUM} — And They Paid
+    - The Man Who Tricked {INSTITUTION} Into {DOING THE CRIME FOR HIM}
+    hook_types:
+    - 'cold open: date + city + object, present tense, no greeting'
+    - 'paradox: the ending shown first'
+    - two questions, answer deferred to the end
+    kling_bias: none
+    gen:
+      enabled: true
+      style_prompt: Stylized cinematic 3D animation still, Pixar-like proportions but restrained and adult, soft
+        volumetric light, shallow depth of field, muted teal-and-amber palette, film grain, 16:9, no text, no logos,
+        no watermark. Not photorealistic.
+      reference_frames: []
+      i2v_share: 0.35
+    script_bible: docs/format_bible_heists.md
+    script_style: heists
+    style_prompt: Stylized cinematic 3D animation still, Pixar-like proportions but restrained and adult, soft volumetric
+      light, shallow depth of field, muted teal-and-amber palette, film grain, 16:9, no text, no logos, no watermark.
+      Not photorealistic.
+    image_model: gemini-3.1-flash-image
+    infographic_style: dark background with faint grid, thin white lines, flat green (#2EE59D) icons, monospaced
+      glitch text
+    music_prefix: heist
