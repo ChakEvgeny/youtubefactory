@@ -137,6 +137,54 @@ def draw_bare(img: Path, big, small: str, out: Path, colour="yellow"):
     im.save(out, quality=93)
 
 
+def draw_page(img: Path, big, small: str, out: Path):
+    """Режим page — для Survivor's Notebook (2026-09-18).
+
+    Бледная страница дневника в ленте сливается с белым фоном YouTube, а жёлтый
+    с обводкой превращает тонкий почерк в пузыри. Поэтому: страница лежит чуть
+    повёрнутой на тёмном фоне с тенью (контраст даёт рамка), надпись — густыми
+    чернилами прямо на бумаге, как запись в дневнике; подстрочник — ржавым.
+    big — строка или куски [["NOT SINKING. ","ink"],["STUCK.","rust"]].
+    """
+    INKC, RUSTC = (28, 24, 44), (150, 52, 32)
+    cmap = {"ink": INKC, "rust": RUSTC}
+    parts = ([(t, cmap.get(c, INKC)) for t, c in big] if isinstance(big, list) else [(big, INKC)])
+    line = "".join(t for t, _ in parts)
+    bg = Image.new("RGB", (W, H), (22, 18, 14))
+    # мягкая виньетка, чтобы фон не был плоским
+    vg = Image.new("L", (W, H), 0); dv = ImageDraw.Draw(vg)
+    dv.ellipse((-W * 0.2, -H * 0.3, W * 1.2, H * 1.3), fill=70)
+    bg.paste((48, 40, 32), (0, 0), vg.filter(ImageFilter.GaussianBlur(120)))
+    pw, ph = int(W * 0.93), int(H * 0.93)
+    page = Image.open(img).convert("RGB").resize((pw, ph), Image.LANCZOS)
+    d = ImageDraw.Draw(page)
+    sz = 150
+    while sz > 60:
+        f = ImageFont.truetype(HAND, sz)
+        if d.textlength(line, font=f) <= pw * 0.9:
+            break
+        sz -= 4
+    f = ImageFont.truetype(HAND, sz)
+    x, y = (pw - d.textlength(line, font=f)) / 2, ph * 0.02
+    sw = max(int(sz * 0.045), 3)          # тонкий почерк утолщаем обводкой тем же цветом
+    cx = x
+    for t, col in parts:
+        d.text((cx, y), t, font=f, fill=col, stroke_width=sw, stroke_fill=col)
+        cx += d.textlength(t, font=f)
+    if small:
+        fm = ImageFont.truetype(HAND, int(sz * 0.42))
+        d.text(((pw - d.textlength(small, font=fm)) / 2, y + sz * 1.02), small, font=fm,
+               fill=RUSTC, stroke_width=2, stroke_fill=RUSTC)
+    page = page.convert("RGBA").rotate(-1.8, resample=Image.BICUBIC, expand=True)
+    sh = Image.new("RGBA", page.size, (0, 0, 0, 0))
+    sh.paste((0, 0, 0, 170), (0, 0), page.split()[3])
+    sh = sh.filter(ImageFilter.GaussianBlur(18))
+    px, py = (W - page.width) // 2, (H - page.height) // 2
+    bg = bg.convert("RGBA")
+    bg.alpha_composite(sh, (px + 10, py + 16)); bg.alpha_composite(page, (px, py))
+    bg.convert("RGB").save(out, quality=93)
+
+
 def draw_text(img: Path, big: str, small: str, out: Path, side="left", theme="dark"):
     T = THEMES.get(theme, THEMES["dark"])
     hand = T["hand"]
@@ -186,11 +234,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dir")
     ap.add_argument("--style", required=True)
-    ap.add_argument("--theme", default="bare", choices=["bare", "dark", "light"],
+    ap.add_argument("--theme", default="bare", choices=["bare", "dark", "light", "page"],
                     help="bare — текст на рисунке без плашки (по умолчанию)")
     ap.add_argument("--colour", default="yellow", choices=list(COLOURS))
     ap.add_argument("--model", default="gemini-3-pro-image")
+    ap.add_argument("--font", default="", help="шрифт надписи; по умолчанию Sriracha (Why&How)")
+    ap.add_argument("--ref", default="", help="эталон стиля канала для фона")
     a = ap.parse_args()
+    if a.font:
+        global HAND
+        HAND = a.font
     d = Path(a.dir)
     spec = json.loads((d / "thumbs.json").read_text(encoding="utf-8"))
     out = d / "thumbs"; out.mkdir(exist_ok=True)
@@ -203,6 +256,7 @@ def main():
         if not bg.exists():
             try:
                 r = genimage.generate(cfg, a.style + " " + item["image"] + NEG, bg,
+                                      refs=[Path(a.ref)] if a.ref else None,
                                       model=a.model, aspect="16:9")
                 spent["usd"] += r.get("usd", 0.0)
             except Exception as e:
@@ -211,6 +265,8 @@ def main():
         if item.get("l1"):
             draw_two(bg, item["l1"], item.get("l2", ""), dst,
                      item.get("c1", "coral"), item.get("c2", "green"))
+        elif a.theme == "page":
+            draw_page(bg, item["big"], item.get("small", ""), dst)
         elif a.theme == "bare":
             draw_bare(bg, item["big"], item.get("small", ""), dst, a.colour)
         else:

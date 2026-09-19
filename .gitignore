@@ -13,3 +13,6 @@ pipeline/motion/public/cuts/
 motion/public/cuts/
 *.bak
 *.bak_*
+motion/public/survival/_last/
+motion/public/survival/_film/
+motion/public/
