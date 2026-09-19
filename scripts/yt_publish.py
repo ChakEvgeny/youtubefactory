@@ -56,7 +56,9 @@ def auth(channel: str):
         sys.exit(f"нет OAuth-клиента: {client}")
     flow = InstalledAppFlow.from_client_secrets_file(client, SCOPES)
     # WSL: браузер открываешь сам в Windows, localhost пробрасывается в WSL
-    c = flow.run_local_server(port=8765, open_browser=False,
+    # port=0 — свободный порт: фиксированный 8765 после предыдущего входа
+    # ещё держался системой, и следующий вход падал
+    c = flow.run_local_server(port=0, open_browser=False,
                               authorization_prompt_message="Открой в браузере и выбери канал:\n{url}\n")
     (CONF / "tokens").mkdir(parents=True, exist_ok=True)
     tok = CONF / "tokens" / f"{channel}.json"
