@@ -22,6 +22,10 @@ MODEL = "claude-opus-5"
 LANGS = {
     "es-419": "Latin American Spanish", "pt-BR": "Brazilian Portuguese",
     "de": "German", "fr": "French",
+    # русский добавлен по просьбе Евгения 2026-09-22. По RPM рынок дешёвый и под
+    # общее правило «только платёжеспособные рынки» не подходит — стоит здесь
+    # как осознанное исключение, а не как расширение списка
+    "ru": "Russian",
 }
 STYLE = ("Tone: dry documentary true-crime narration. Short, clipped sentences. "
          "No exclamation marks, no slang, no added adjectives, no moralising. "
@@ -80,8 +84,36 @@ def wrap(t: str) -> str:
 def main():
     d = Path(sys.argv[1])
     srt = parse_srt(d / "subs_en.srt")
-    title = (d / "title_en.txt").read_text(encoding="utf-8").strip()
+    # title_en.txt хранит основной заголовок и запасной для A/B-теста; на перевод
+    # идёт только основной, иначе в meta_*.txt уезжают служебные пометки
+    raw = (d / "title_en.txt").read_text(encoding="utf-8").strip()
+    if "(основной)" in raw:
+        tail = raw.split("(основной):", 1)[1]
+        title = next(l.strip() for l in tail.splitlines() if l.strip())
+    else:
+        title = raw
     desc = (d / "description.md").read_text(encoding="utf-8")
+
+    # Заголовок и описание берём С ЖИВОГО РОЛИКА, если он уже залит:
+    #     translate_subs.py <папка> <языки> <канал> <video_id>
+    # Евгений пишет заголовки сам при заливке, и перевод с локального
+    # title_en.txt дважды давал ролик, где английский заголовок говорит одно, а
+    # немецкий другое. Правило: перед переводом метаданных смотреть, что реально
+    # стоит у видео.
+    if len(sys.argv) > 4:
+        ch, vid = sys.argv[3], sys.argv[4]
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from googleapiclient.discovery import build as _build
+        from yt_publish import creds as _creds
+        sn = _build("youtube", "v3", credentials=_creds(ch)).videos().list(
+            part="snippet", id=vid).execute()["items"][0]["snippet"]
+        if sn["title"].strip() != title.strip():
+            print(f"  ! заголовок на ролике отличается от локального:\n"
+                  f"    ролик:  {sn['title']}\n    локально: {title}", flush=True)
+        title, desc = sn["title"], sn["description"]
+        (d / "title_live.txt").write_text(title + "\n", encoding="utf-8")
+        print(f"источник метаданных — живой ролик {vid}", flush=True)
+
     client = anthropic.Anthropic()
     budget = {"usd": 0.0}
     outdir = d / "i18n"
@@ -129,10 +161,14 @@ def main():
         print(f"{code} готов: {md['title']}", flush=True)
 
 
+    # Русская дорожка по CLAUDE.md полагается личному каналу; на развлекательных
+    # список задаётся вторым аргументом, чтобы не тянуть дешёвый по RPM трафик
+    want = [c.strip() for c in sys.argv[2].split(",")] if len(sys.argv) > 2 else list(LANGS)
+    langs = {c: LANGS[c] for c in want if c in LANGS}
     with ThreadPoolExecutor(max_workers=3) as ex:
-        list(ex.map(do_lang, LANGS.items()))
+        list(ex.map(do_lang, langs.items()))
 
-    print(f"\nвсего: {len(LANGS)} языков, ${budget['usd']:.2f}")
+    print(f"\nвсего: {len(langs)} языков, ${budget['usd']:.2f}")
 
 
 if __name__ == "__main__":

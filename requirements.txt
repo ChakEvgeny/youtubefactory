@@ -1,4 +1,5 @@
 google-api-python-client==2.149.0
+google-auth-oauthlib==1.4.1
 supabase==2.9.1
 python-dotenv==1.0.1
 PyYAML==6.0.2

@@ -40,10 +40,12 @@ def main():
     ap = argparse.ArgumentParser(description="Пересчёт niche_scores без вызовов YouTube API")
     ap.add_argument("--langs", default="en,de")
     ap.add_argument("--days", type=int, default=90)
+    ap.add_argument("--config", default=str(ROOT / "config" / "niches.yaml"),
+                    help="матрица ниш; для отдельного канала — свой файл")
     args = ap.parse_args()
     langs = [x.strip() for x in args.langs.split(",")]
 
-    cfg = yaml.safe_load((ROOT / "config" / "niches.yaml").read_text(encoding="utf-8"))
+    cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
     load_dotenv(ROOT / ".env")
     sb = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
     now = datetime.now(timezone.utc)

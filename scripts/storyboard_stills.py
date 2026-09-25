@@ -31,6 +31,13 @@ STYLES = {
               "lamp accent. Shot on 35mm, shallow depth of field, natural light only. "
               "The woman's face is almost never visible: prefer hands, back, silhouette, wide "
               "figure in landscape, or object detail."),
+ "work": ("A three-ink risograph print on cream paper, and only three inks. Deep navy #1B2A5E for "
+          "outlines, dark masses and the settled lower third; warm ochre #C89A3C for the main colour "
+          "and all light; signal red #E4533A as an accent only, never more than a tenth of the frame. "
+          "Dense confident outlines of one weight, halftone dot screens for tone, a deliberate one to "
+          "two pixel misregistration where inks meet, visible paper grain. Fills are solid ink, never "
+          "a pale halftone — a grey or lilac mass is a failure. Everyone except the presenter has a "
+          "completely blank head with no facial features."),
  "heists": ("Photoreal cinematic still, 1984 American suburbia and television studio, warm tungsten "
             "and cathode-ray glow, palette of deep navy, warm off-white, worn brown, one red accent. "
             "Shot on 35mm, shallow depth of field. Faces used sparingly, prefer hands, back of head, "

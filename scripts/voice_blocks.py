@@ -139,6 +139,11 @@ def main():
         if s["kind"] == "pause":
             s["dur"] = s.get("dur") or 0.7
             s["audio"] = ""
+        # немые шоты без реплики длительности не получают: это метки готовых
+        # вставок (интро, аутро) и чистые паузы. Раньше на них падал пересчёт.
+        if "dur" not in s:
+            s["dur"] = 0.0
+            s.setdefault("audio", "")
         s["t_in"] = round(t, 2); s["t_out"] = round(t + s["dur"], 2); t += s["dur"]
     (d / "timed.json").write_text(json.dumps(shots, ensure_ascii=False, indent=1), encoding="utf-8")
     costs.log(costs.project_of(d), "voice", MODEL, 0.0, len(blocks), "блоков")

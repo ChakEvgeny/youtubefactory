@@ -5,7 +5,7 @@
 Переходы жёсткой склейкой — это не документалка, здесь смены должны читаться.
 """
 from __future__ import annotations
-import json, os, re, subprocess, sys, time
+import hashlib, json, os, re, shutil, subprocess, sys, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -59,21 +59,84 @@ def run(cmd, **kw):
     return r
 
 
-def ken(img: Path, out: Path, L: float):
-    """Медленный наезд без дрожания.
+ZOOM = 0.05   # насколько наезжает камера за один кадр раскадровки
+
+
+def ken(img: Path, out: Path, L: float, z0: float = 1.0, z1: float | None = None):
+    """Медленный наезд без дрожания, с заданными началом и концом.
 
     zoompan держит положение окна в целых пикселях и округляет его каждый кадр —
     на исходнике в размер кадра это заметное подрагивание. Увеличиваем втрое:
     ошибка округления становится треть пикселя и глазом не читается.
+
+    z0/z1 нужны, когда кадр ТЯНЕТСЯ через несколько шотов: каждый следующий
+    кусок продолжает наезд с того места, где кончился предыдущий, и на стыке
+    ничего не дёргается. Без этого два куска одной картинки давали рывок:
+    наезд обнулялся в начале второго (замечание Евгения 2026-09-23).
     """
+    z1 = z0 + ZOOM if z1 is None else z1
     nf = max(int(L * FPS), 1)
     run(["ffmpeg", "-v", "error", "-framerate", str(FPS), "-loop", "1", "-i", str(img),
          "-frames:v", str(nf),
          "-vf", f"scale={W*3}:{H*3}:flags=lanczos,"
-                f"zoompan=z='1+0.05*on/{nf}':d=1:"
+                f"zoompan=z='{z0:.5f}+{z1 - z0:.5f}*on/{nf}':d=1:"
                 f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={W}x{H}:fps={FPS},setsar=1",
          "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
          str(out), "-y"])
+
+
+def camera_runs(r: list) -> dict:
+    """Для каждого шота — начало и конец наезда.
+
+    Соседние шоты на ОДНОЙ картинке (поле reuse указывает на предыдущий шот)
+    считаются одним проездом: их длины складываются, и наезд делится между ними
+    пропорционально. Отсылка к давнему кадру таким проездом не считается —
+    там камера едет заново.
+    """
+    z = {}
+    i = 0
+    while i < len(r):
+        s = r[i]
+        if s.get("kind") != "scene":
+            i += 1
+            continue
+        run_ids = [i]
+        j = i + 1
+        while (j < len(r) and r[j].get("kind") == "scene"
+               and r[j].get("reuse") == r[j - 1]["id"]):
+            run_ids.append(j)
+            j += 1
+        total = sum(r[k]["dur"] for k in run_ids) or 1.0
+        acc = 0.0
+        for k in run_ids:
+            z[r[k]["id"]] = (1.0 + ZOOM * acc / total,
+                             1.0 + ZOOM * (acc + r[k]["dur"]) / total)
+            acc += r[k]["dur"]
+        i = j
+    return z
+
+
+
+def stamp(d: Path, s: dict, L: float) -> str:
+    """Отпечаток содержимого куска.
+
+    До 2026-09-23 кусок переиспользовался, если совпала ДЛИНА. Перерисованный
+    кадр той же длины в фильм не попадал: на диске лежал ролик со старым
+    датчиком давления, хотя картинка была новой. Теперь в отпечаток входят
+    сама картинка (время и размер файла), тип куска, длина, шрифт и props схемы.
+    """
+    parts = [s.get("kind"), round(L, 3), s.get("font"), s.get("bg_id"), s.get("reuse"),
+             s.get("_z"),
+             json.dumps(s.get("diagram") or {}, sort_keys=True, ensure_ascii=False)]
+    # компонента схемы тоже входит в отпечаток: правка Diagram.tsx обязана
+    # пересобрать карточки, иначе в фильме останется старая вёрстка
+    dg = MOTION / "src" / "scenes" / "Diagram.tsx"
+    if s.get("kind") in ("diagram", "outro") and dg.exists():
+        parts.append(int(dg.stat().st_mtime))
+    for i in {s["id"], s.get("bg_id", s["id"])}:
+        f = d / "scenes" / f"{i:03d}.jpg"
+        parts.append(f"{i}:{int(f.stat().st_mtime)}:{f.stat().st_size}" if f.exists() else f"{i}:-")
+    return hashlib.sha1(json.dumps(parts, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:12]
 
 
 def main():
@@ -119,13 +182,43 @@ def main():
     (d / "timed.json").write_text(json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"  хронометраж {int(t)//60}:{int(t)%60:02d}", flush=True)
 
+    ZCAM = camera_runs(r)
+    # диапазон наезда входит в отпечаток куска: изменился проезд — кусок пересобрать
+    for s in r:
+        s["_z"] = [round(x, 5) for x in ZCAM[s["id"]]] if s["id"] in ZCAM else None
+    # копия картинки под своим номером: сетка и проверки ищут scenes/NNN.jpg
+    for s in r:
+        if s.get("reuse"):
+            src_img = d / "scenes" / f"{s['reuse']:03d}.jpg"
+            dst_img = d / "scenes" / f"{s['id']:03d}.jpg"
+            if src_img.exists():
+                shutil.copyfile(src_img, dst_img)
+
+    # Длинная строка на карточке — повторяющийся брак: её видно только в готовом
+    # фильме. Предупреждаем до рендера, пока это ещё дёшево исправить.
+    for s in r:
+        dg = s.get("diagram") or {}
+        for it in (dg.get("items") or []):
+            txt = it if isinstance(it, str) else str(it.get("label", ""))
+            lim = 20 if dg.get("kind") != "counter" else 14
+            if len(txt) > lim:
+                print(f"  ! кадр {s['id']}: строка «{txt}» длиной {len(txt)} "
+                      f"при пределе {lim} — проверить, влезла ли в плашку", flush=True)
+
     print("кадры…", flush=True)
     t0 = time.time()
     for n, s in enumerate(r, 1):
         seg = T / f"s{s['id']:04d}.mp4"
+        key = T / f"s{s['id']:04d}.stamp"
         L = s["dur"]
-        if seg.exists() and abs(dur(seg) - L) < 0.06:
+        sk = stamp(d, s, L)
+        if (seg.exists() and abs(dur(seg) - L) < 0.06
+                and key.exists() and key.read_text(encoding="utf-8") == sk):
             continue
+        # отпечаток разошёлся — промежуточные куски этого кадра тоже устарели
+        for stale in (T / f"b{s['id']:04d}.mp4", T / f"o{s['id']:04d}.mov",
+                      T / f"bump_raw{s['id']:04d}.mp4"):
+            stale.unlink(missing_ok=True)
         if s["kind"] == "bumper":
             raw = T / f"bump_raw{s['id']:04d}.mp4"
             if not raw.exists() or abs(dur(raw) - L) > 0.08:
@@ -189,15 +282,19 @@ def main():
                  "-map", "[v]", "-t", f"{L:.3f}", "-c:v", "libx264", "-preset", "veryfast",
                  "-crf", "18", "-pix_fmt", "yuv420p", str(seg), "-y"])
         else:
-            img = d / "scenes" / f"{s['id']:03d}.jpg"
+            # шот может тянуть картинку соседа или ссылаться на давний кадр
+            img = d / "scenes" / f"{s.get('reuse', s['id']):03d}.jpg"
             if not img.exists():
                 print(f"  ! кадр {s['id']}: нет картинки", flush=True)
                 run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
                      f"color=c=0xF2E9D8:s={W}x{H}:r={FPS}", "-t", f"{L:.3f}", "-c:v", "libx264",
                      "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", str(seg), "-y"])
+                key.unlink(missing_ok=True)
                 continue
             # лёгкий наезд: рисунок не плывёт, но кадр не мёртвый
-            ken(img, seg, L)
+            z0, z1 = ZCAM.get(s["id"], (1.0, 1.0 + ZOOM))
+            ken(img, seg, L, z0, z1)
+        key.write_text(sk, encoding="utf-8")
         if n % 20 == 0:
             print(f"  {n}/{len(r)}  {int(time.time()-t0)} c", flush=True)
 

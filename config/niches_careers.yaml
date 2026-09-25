@@ -1,0 +1,85 @@
+# Матрица сканирования под четвёртый канал: как устроены работа и карьера.
+# Рынки старта — четыре англоязычных: US, UK, CA, AU. Регион US как крупнейший
+# из них; rpm_estimate 8.0 — оценка для карьерной/финансовой темы на этих
+# рынках (выше базовых 6.5 для en/US: рекрутинг, обучение, B2B).
+#
+# Формулировки по правилам из niches.yaml: 2-4 слова, без стопок существительных,
+# без слов-суффиксов (explained/guide), без брендов.
+#
+# rpm_niche_factor одинаковый (1.3) у всех субниш намеренно: сравниваем субниши
+# по данным, а не по моей догадке о рекламных ставках внутри карьерной темы.
+
+languages:
+  en: {region: US, rpm_estimate: 8.0}
+
+niches:
+  careers_jobs_general:
+    rpm_niche_factor: 1.3
+    description: >-
+      Работа и карьера широко: рынок труда, наём, как устроена занятость.
+      Не мотивация, не курсы, не «как заработать онлайн».
+    queries:
+      en: [job market, getting hired, why nobody hiring]
+
+  careers_salary:
+    rpm_niche_factor: 1.3
+    description: >-
+      Сколько платят по профессиям и странам. Не трейдинг, не пассивный доход.
+    queries:
+      en: [average salary, salary comparison, how much do earn]
+
+  careers_change:
+    rpm_niche_factor: 1.3
+    description: >-
+      Смена профессии, перенос навыков, вход в новую отрасль.
+    queries:
+      en: [career change, switching careers, changing jobs at 40]
+
+  careers_country_compare:
+    rpm_niche_factor: 1.3
+    description: >-
+      Сравнение стран по работе и условиям: одна тема в разных странах.
+      Ключевая диагностика: делает ли кто-то сравнение как сюжет.
+    queries:
+      en: [working in germany, uk vs germany, jobs in europe]
+
+  careers_ai_jobs:
+    rpm_niche_factor: 1.3
+    description: >-
+      Что искусственный интеллект делает с профессиями и наймом.
+      Не обзоры нейросервисов, не промпт-курсы.
+    queries:
+      en: [ai replacing jobs, ai job market, will ai take]
+
+  careers_migration_eu:
+    rpm_niche_factor: 1.3
+    description: >-
+      Трудовая миграция в Европе: переезд ради работы, визы, признание дипломов.
+    queries:
+      en: [moving to europe, work visa, move to germany]
+
+  careers_country_compare_en:
+    rpm_niche_factor: 1.3
+    description: >-
+      Сравнение англоязычных стран по работе: одна профессия или одна тема
+      в США, Великобритании, Канаде, Австралии. Не туризм, не переезд ради
+      климата, не политика.
+    queries:
+      en: [us vs uk salary, australia vs uk work, canada vs us jobs]
+
+  careers_worker_rights:
+    rpm_niche_factor: 1.3
+    description: >-
+      Права и условия занятости: отпуск, больничные, увольнение, уведомление,
+      переработки — и чем они отличаются между странами. Не юридические
+      консультации по конкретному делу.
+    queries:
+      en: [paid time off, annual leave entitlement, fired without warning]
+
+  careers_move_abroad_en:
+    rpm_niche_factor: 1.3
+    description: >-
+      Переезд ради работы между англоязычными странами: визы, признание опыта,
+      что меняется в карьере. Не студенческие визы, не туризм.
+    queries:
+      en: [moving to australia, moving to canada work, uk to america]
