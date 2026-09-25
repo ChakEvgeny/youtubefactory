@@ -18,7 +18,9 @@ export type DiagramProps = {
   font?: string;
   plate?: boolean;
   outline?: boolean;
-  kind: 'gauge' | 'split' | 'equation' | 'cell' | 'counter';
+  kind: 'gauge' | 'split' | 'equation' | 'cell' | 'counter' | 'dots' | 'vessel';
+  /** kind='dots': области, в которых копятся точки, в долях кадра */
+  regions?: {x: number; y: number; w: number; h: number; n: number}[];
   title?: string;
   items?: (Item | string)[];
 };
@@ -26,7 +28,7 @@ export type DiagramProps = {
 const ease = Easing.bezier(0.22, 1, 0.36, 1);
 const cfgSpring = {damping: 200, stiffness: 110, mass: 0.8};
 
-export const Diagram: React.FC<DiagramProps> = ({kind, title, items = [], transparent, font, plate = true, outline}) => {
+export const Diagram: React.FC<DiagramProps> = ({kind, title, items = [], regions, transparent, font, plate = true, outline}) => {
   const {width, height} = useVideoConfig();
   return (
     <AbsoluteFill style={{backgroundColor: transparent ? 'transparent' : C.paper, fontFamily: font || FONT}}>
@@ -56,6 +58,8 @@ export const Diagram: React.FC<DiagramProps> = ({kind, title, items = [], transp
         {kind === 'equation' && <Equation lines={items as string[]} width={width} />}
         {kind === 'counter' && <Counter lines={items as string[]} width={width} out={outline} />}
         {kind === 'cell' && <Cell labels={items as string[]} width={width} />}
+        {kind === 'dots' && <Dots regions={regions || []} />}
+        {kind === 'vessel' && <Vessel rect={(regions || [])[0]} />}
       </AbsoluteFill>
     </AbsoluteFill>
   );
@@ -155,13 +159,17 @@ const Split: React.FC<{items: Item[]; width: number}> = ({items, width}) => {
 const Equation: React.FC<{lines: string[]; width: number}> = ({lines, width}) => {
   const frame = useCurrentFrame();
   const {fps, height} = useVideoConfig();
+  // Кегль ужимается по самой длинной строке: у плашки фиксированные 80% кадра,
+  // и строка в 19 знаков вставала вплотную к её краю (2026-09-23, «Grizzly»).
+  const longest = Math.max(...lines.map((l) => l.length), 1);
+  const fit = Math.min(1, 14 / longest);
   return (
     <div style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: height * 0.028}}>
       {lines.map((ln, i) => {
         const s = spring({frame: frame - i * 11, fps, config: cfgSpring});
         const last = i === lines.length - 1;
         return (
-          <Write key={i} delay={i * 11}><div style={{fontSize: K(height, last ? 0.13 : 0.095),
+          <Write key={i} delay={i * 11}><div style={{fontSize: K(height, (last ? 0.13 : 0.095) * fit),
             fontWeight: 800, color: last ? C.accent : C.ink, opacity: s,
             }}>{ln}</div></Write>
         );
@@ -174,18 +182,29 @@ const Counter: React.FC<{lines: string[]; width: number; out?: boolean}> = ({lin
   const frame = useCurrentFrame();
   const {fps, height} = useVideoConfig();
   const s = spring({frame, fps, config: cfgSpring});
-  const [big, sub] = [lines[0] ?? '', lines[1] ?? ''];
+  const big = lines[0] ?? '';
+  const rest = lines.slice(1);
+  // Кегль крупной строки считается от её длины. Было фиксированные 0.30 высоты:
+  // «5» влезало, а «grizzly 56–64» вылезало за плашку, и третий элемент вообще
+  // не рисовался — Counter брал только первые два (поймано 2026-09-23).
+  // Опорная длина 7, а не 9: при 0.30 высоты средний знак занимает около 0.55
+  // кегля, внутрь плашки (80% кадра минус поля) влезает примерно семь знаков.
+  // С девятью «45–60 mmHg» всё ещё вылезало за края.
+  const bigK = Math.min(0.30, (0.30 * 7) / Math.max(big.length, 7));
   return (
     <div style={{textAlign: 'center', transform: `scale(${0.9 + 0.1 * s})`, opacity: s}}>
-      <Write delay={2}><div style={{fontSize: K(height, 0.30), fontWeight: 800,
+      <Write delay={2}><div style={{fontSize: K(height, bigK), fontWeight: 800,
         color: out ? C.accent : C.ink, lineHeight: 1,
         WebkitTextStroke: out ? `${Math.round(height*0.010)}px ${C.ink}` : undefined,
         paintOrder: 'stroke fill',
         textShadow: out ? `0 ${Math.round(height*0.008)}px 0 ${C.ink}` : undefined}}>{big}</div></Write>
       <div style={{height: K(height, 0.010), width: width * 0.22 * s, background: C.accent, margin: '3% auto'}} />
-      <div style={{fontSize: K(height, 0.050), color: out ? '#F2E9D8' : C.dim, fontWeight: 700,
-        WebkitTextStroke: out ? `${Math.round(height*0.004)}px ${C.ink}` : undefined,
-        paintOrder: 'stroke fill'}}>{sub}</div>
+      {rest.map((ln, i) => (
+        <div key={i} style={{fontSize: K(height, 0.050), color: out ? '#F2E9D8' : C.dim,
+          fontWeight: 700, marginTop: i ? K(height, 0.012) : 0,
+          WebkitTextStroke: out ? `${Math.round(height*0.004)}px ${C.ink}` : undefined,
+          paintOrder: 'stroke fill'}}>{ln}</div>
+      ))}
     </div>
   );
 };
@@ -222,5 +241,68 @@ const Cell: React.FC<{labels: string[]; width: number}> = ({labels, width}) => {
         <span>{labels[0]}</span><span>{labels[1]}</span>
       </div>
     </div>
+  );
+};
+
+
+/** Точки, копящиеся внутри заданных областей кадра: «сколько накопилось внутри».
+ *  Рисуется ПОВЕРХ кадра с водолазом — силуэт не нужен, он уже нарисован.
+ *  Плотность растёт по ходу реплики, поэтому состояние читается движением. */
+const Dots: React.FC<{regions: {x: number; y: number; w: number; h: number; n: number}[]}> = ({regions}) => {
+  const frame = useCurrentFrame();
+  const {durationInFrames, width, height} = useVideoConfig();
+  const p = interpolate(frame, [0, durationInFrames * 0.8], [0, 1],
+    {extrapolateRight: 'clamp', easing: ease});
+  return (
+    <AbsoluteFill>
+      <svg width={width} height={height} style={{position: 'absolute', left: 0, top: 0}}>
+        {regions.flatMap((rg, ri) => {
+          const shown = Math.round(rg.n * p);
+          return Array.from({length: shown}, (_, i) => {
+            // псевдослучайно, но устойчиво: один и тот же кадр даёт один и тот же узор
+            const a = Math.sin((ri + 1) * 12.9898 + i * 78.233) * 43758.5453;
+            const b = Math.sin((ri + 1) * 39.3467 + i * 11.135) * 24634.6345;
+            const fx = a - Math.floor(a), fy = b - Math.floor(b);
+            const x = (rg.x + fx * rg.w) * width;
+            const y = (rg.y + fy * rg.h) * height;
+            const r = height * 0.0055;
+            const born = interpolate(frame, [(i / Math.max(1, rg.n)) * durationInFrames * 0.8,
+                                             (i / Math.max(1, rg.n)) * durationInFrames * 0.8 + 8],
+              [0, 1], {extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: ease});
+            return <circle key={`${ri}-${i}`} cx={x} cy={y} r={r * born} fill={C.ink} opacity={0.85} />;
+          });
+        })}
+      </svg>
+    </AbsoluteFill>
+  );
+};
+
+/** Сосуд в разрезе с затором из пузырей: труба поперёк кадра, внутри круги,
+ *  которые сбиваются в пробку. Кладётся поверх кадра с водолазом. */
+const Vessel: React.FC<{rect?: {x: number; y: number; w: number; h: number}}> = ({rect}) => {
+  const frame = useCurrentFrame();
+  const {durationInFrames, width, height} = useVideoConfig();
+  const p = interpolate(frame, [0, durationInFrames * 0.7], [0, 1],
+    {extrapolateRight: 'clamp', easing: ease});
+  // положение задаётся кадром: сосуд должен лечь на грудь фигуры, а не поперёк экрана
+  const r0 = rect || {x: 0.27, y: 0.44, w: 0.46, h: 0.13};
+  const W = width * r0.w, H = height * r0.h;
+  const x0 = width * r0.x, y0 = height * r0.y;
+  const n = 11;
+  return (
+    <AbsoluteFill>
+      <svg width={width} height={height} style={{position: 'absolute', left: 0, top: 0}}>
+        <rect x={x0} y={y0} width={W} height={H} rx={H / 2}
+              fill={C.paper} stroke={C.ink} strokeWidth={height * 0.006} />
+        {Array.from({length: n}, (_, i) => {
+          const loose = x0 + (i + 0.5) * (W / n);
+          const jamAt = x0 + W * 0.62 - (n - 1 - i) * (H * 0.42);
+          const cx = loose + (jamAt - loose) * p;
+          const r = H * (0.17 + 0.12 * ((i % 3) / 2));
+          return <circle key={i} cx={cx} cy={y0 + H / 2} r={r}
+                         fill="none" stroke={C.ink} strokeWidth={height * 0.004} />;
+        })}
+      </svg>
+    </AbsoluteFill>
   );
 };

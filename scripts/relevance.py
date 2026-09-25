@@ -165,9 +165,11 @@ def main():
     ap.add_argument("--skip-formats", action="store_true", help="не определять визуальный формат")
     ap.add_argument("--formats-only", action="store_true", help="только формат, без релевантности")
     ap.add_argument("--format-batch", type=int, default=FORMAT_BATCH)
+    ap.add_argument("--config", default=str(ROOT / "config" / "niches.yaml"),
+                    help="матрица ниш; для отдельного канала — свой файл")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load((ROOT / "config" / "niches.yaml").read_text(encoding="utf-8"))
+    cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
     load_dotenv(ROOT / ".env")
     for k in ("SUPABASE_URL", "SUPABASE_SERVICE_KEY"):
         if not os.getenv(k):

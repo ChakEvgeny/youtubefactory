@@ -57,8 +57,10 @@ STYLE = {
                    "high-chroma colours: vivid cerulean sea-blue, warm cream, strong coral-red on the one object "
                    "that matters, deep ink black. Simple rounded cartoon people. Strong contrast, close-up."),
         "ref": "/mnt/nas/output/explain/2026-09-17_why-not-drink-seawater/scenes/004.jpg",
-        "font": "Sriracha.ttf", "fill": (20, 18, 16), "stroke": None,
-        "plate": (242, 233, 216), "dark": False},
+        # Кремовой плашки у Why&How нет (решение Евгения 2026-09-23): текст лежит
+        # прямо на кадре, читаемость даёт тёмная полупрозрачная зона слева.
+        "font": "Sriracha.ttf", "fill": (245, 238, 222), "stroke": (10, 12, 16),
+        "plate": None, "dark": True},
 }
 
 
@@ -191,6 +193,13 @@ def main():
         ch, item, k, (text, scene, obj) = job
         d = BASE / ch / item["slug"]; d.mkdir(parents=True, exist_ok=True)
         st = STYLE[ch]
+        # Текст проверяем ДО генерации: он от картинки не зависит, а три попытки
+        # с заведомо непролезающей строкой сжигали доллар впустую (2026-09-23).
+        pre = fit_text(text, st["font"], int(W * 0.56) - 40, int(H * 0.62))
+        if not pre or pre[2] < CAP_MIN:
+            log.append(f"{ch}/{item['slug']}/v{k}: БРАК — текст «{text}» не влезает "
+                       f"с заглавной ≥{CAP_MIN}px, картинка не генерировалась")
+            return False
         for attempt in range(3):
             bg = d / f"bg_v{k}_{attempt}.jpg"
             prompt = f"{st['prompt']} {scene}.{COMPOSE}" + (" Make the left side even darker and emptier." if attempt else "")
@@ -221,6 +230,10 @@ def main():
     (BASE / ("check_log_redo.txt" if redo else "check_log.txt")).write_text("\n".join(sorted(log)), encoding="utf-8")
     costs.log("thumbs_v2", "thumbs", "gemini-3.1-flash-image", spent["img"], len(jobs), "обложек")
     costs.log("thumbs_v2", "thumbs_check", MODEL, spent["usd"], len(jobs), "проверок")
+    # без причин отбраковки непонятно, что править в постановке — печатаем их
+    for line in log:
+        if "БРАК" in line:
+            print("  " + line)
     print(f"вариантов {sum(res)}/{len(jobs)} прошли проверку, картинки ${spent['img']:.2f}, "
           f"проверка ${spent['usd']:.2f}, {int(time.time()-t0)} c")
     for gpath in grids:

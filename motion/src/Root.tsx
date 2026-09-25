@@ -11,6 +11,9 @@ import {Scrap, ScrapProps} from './scenes/Scrap';
 import {PageFlip, PageFlipProps} from './scenes/PageFlip';
 import {NoirIntro, NoirCut, NoirCutProps, NoirOutro, NoirOutroProps} from './scenes/Noir';
 import {Evidence, EvidenceProps} from './scenes/Evidence';
+import {WorkChip, WorkChipProps} from './scenes/WorkChip';
+import {WorkCard, WorkCardProps} from './scenes/WorkCard';
+import {HostPuppet, HostPuppetProps} from './scenes/HostPuppet';
 
 type Props = CardProps & {seconds?: number};
 type OProps = OverlayProps & {seconds?: number};
@@ -22,6 +25,39 @@ const frames = (s: unknown) => Math.max(Math.round(((s as number) ?? 5) * 24), 2
 
 export const RemotionRoot: React.FC = () => (
   <>
+    <Composition
+      id="HostPuppet"
+      component={HostPuppet as React.FC<Record<string, unknown>>}
+      durationInFrames={375}
+      fps={25}
+      width={1920}
+      height={1080}
+      defaultProps={{bg: 'work/host.jpg', align: 'work/align.json', audio: 'work/hook.mp3',
+        mouth: [0.463,0.538,0.518,0.597], eyeL: [0.424,0.354,0.477,0.399],
+        eyeR: [0.517,0.353,0.567,0.397], offset: 0} as HostPuppetProps}
+    />
+    <Composition
+      id="WorkCard"
+      component={WorkCard as React.FC<Record<string, unknown>>}
+      durationInFrames={192}
+      fps={24}
+      width={1920}
+      height={1080}
+      defaultProps={{kind: 'scale', items: ['6', '12', '18'],
+        label: 'months of default probation', seconds: 8} as WorkCardProps}
+      calculateMetadata={({props}) => ({durationInFrames: frames((props as {seconds?: number}).seconds ?? 6)})}
+    />
+    <Composition
+      id="WorkChip"
+      component={WorkChip as React.FC<Record<string, unknown>>}
+      durationInFrames={72}
+      fps={24}
+      width={1920}
+      height={1080}
+      defaultProps={{big: '2 YEARS', small: 'before they owe you a reason', kicker: 'United Kingdom',
+        transparent: true, side: 'left'} as WorkChipProps & {seconds?: number}}
+      calculateMetadata={({props}) => ({durationInFrames: frames((props as {seconds?: number}).seconds ?? 3)})}
+    />
     <Composition
       id="Card"
       component={Card as React.FC<Record<string, unknown>>}

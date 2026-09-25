@@ -15,7 +15,9 @@ from pathlib import Path
 def pack(d: Path) -> Path:
     rd = lambda n: (d / n).read_text(encoding="utf-8").strip() if (d / n).exists() else ""
     alts = [l for l in rd("title_alt.txt").splitlines() if l.strip() and not l.startswith("#")]
-    thumbs = sorted(p.name for p in (d / "thumbs").glob("thumb_*.jpg")) if (d / "thumbs").exists() else []
+    # _210 — уменьшенные копии для проверки читаемости в ленте, а не обложки
+    thumbs = sorted(p.name for p in (d / "thumbs").glob("thumb_*.jpg")
+                    if not p.stem.endswith("_210")) if (d / "thumbs").exists() else []
     film = next(iter(sorted(d.glob("FILM_*.mp4"))), None)
     parts = [f"ВИДЕО: {film.name if film else '—'}",
              f"ОБЛОЖКИ: {', '.join(thumbs) or '—'}  (папка thumbs/)",
