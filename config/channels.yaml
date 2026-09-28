@@ -136,8 +136,36 @@ defaults:
   music_from: start
   hook_fx: punch
 channels:
+  explain:
+    id: explain
+    status: active        # Why&How, @tellmewhyandhowshow
+    niche: explainers_search_suggest
+    subniche: Объяснялки по поисковым запросам из автоподсказок YouTube
+    voice_id: pqHfZKP75CvOlQylNhV4
+    narration_speed: 1.2
+    target_minutes:
+    - 5
+    - 8
+    rules_doc: docs/explain_channel.md
+  survival:
+    id: survival
+    status: paused        # решение Евгения 2026-09-28
+    paused_since: 2026-09-28
+    pause_note: >-
+      Новые темы не планируем. Три готовых ролика выходят как есть (2, 28 и 30
+      сентября), канал не удаляем и не скрываем, выпущенное остаётся. Вернуться,
+      если освободится ресурс или если эти три дадут неожиданный результат.
+    niche: survival_stories
+    subniche: Истории выживания как страницы полевого дневника 1913 года
+    voice_id: NFG5qt843uXKj4pFvR7C
+    narration_speed: 1.05
+    target_minutes:
+    - 6
+    - 20
+    rules_doc: docs/notebook_channel.md
   business:
     id: business
+    status: archived_phase1        # ниша фазы 1, канал не запускался
     niche: business_breakdowns
     primary: true
     subniche: Крах европейских и британских брендов
@@ -248,6 +276,7 @@ channels:
       reference_frames: []
   space:
     id: space
+    status: archived_phase1        # ниша фазы 1, канал не запускался
     niche: space_science
     subniche: Планеты и разведка миссий
     voice_id: CwhRBWXzGAHq8TQ4Fs17
@@ -291,6 +320,7 @@ channels:
     kling_bias: high
   disasters:
     id: disasters
+    status: archived_phase1        # ниша фазы 1, канал не запускался; не путать с Survivor's Notebook
     niche: disasters_survival
     subniche: Инженерные катастрофы и отказы конструкций
     voice_id: N2lVS1w4EtoT3dr4eOWO
@@ -333,6 +363,7 @@ channels:
     kling_bias: low
   heists:
     id: heists
+    status: active        # The Case Room, @CaseRoomFiles
     niche: heist_stories
     primary: true
     subniche: 'Один обычный человек против большой компании или системы: афёры, схемы, ограбления без насилия'
@@ -389,6 +420,7 @@ channels:
     music_prefix: heist
   work:
     id: work
+    status: active        # Terms of Employment, личный канал
     niche: careers_country_compare_en
     primary: false
     subniche: Как на самом деле устроены работа и оплата труда
