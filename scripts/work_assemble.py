@@ -52,6 +52,13 @@ def stamp(sh, slot: float, P: Path | None = None) -> str:
     return hashlib.sha1(json.dumps(parts, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:12]
 
 
+def dur(p: Path) -> float:
+    """Длительность файла: нужна, чтобы посчитать, где начинать затемнение."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                        "-of", "csv=p=0", str(p)], capture_output=True, text=True, check=True)
+    return float(r.stdout.strip())
+
+
 def run(cmd, **kw):
     r = subprocess.run(cmd, capture_output=True, text=True, **kw)
     if r.returncode:
@@ -92,7 +99,20 @@ def card_seq(sh, seconds: float, work: Path) -> Path:
     return d
 
 
+def title_seg(sh, slot: float, out: Path) -> None:
+    """Заставка блока: название с кипящей линией, чёрное по краям.
+
+    Края чёрные намеренно — цепочка xfade в сборке делает из них уход в
+    затемнение и выход из него, отдельная логика переходов не нужна
+    (решение Евгения 2026-09-28).
+    """
+    run([sys.executable, str(ROOT / "scripts" / "work_title.py"), sh["text"], str(out),
+         "--seconds", f"{slot:.3f}"])
+
+
 def segment(P: Path, sh, slot: float, out: Path, work: Path, i: int) -> None:
+    if sh.get("kind") == "title":
+        return title_seg(sh, slot, out)
     n = max(int(slot * FPS), 2)
     ins, vf = [], []
     # клип и карточка короче слота на длину перетекания: последний кадр
@@ -212,12 +232,20 @@ def main() -> None:
     # Фильм режется на куски ПО ГРАНИЦАМ ШОТОВ, а не по времени. Резать готовую
     # склейку нельзя: перетекание центрировано на стыке, и разрез по времени
     # попадал в его середину — следующий кадр начинал проступать ещё до интро.
-    cuts = [0, len(shots)]
+    # Заставка главы — отдельный кусок: её чёрные края должны остаться чёрными,
+    # поэтому соседние стыки делаются склейкой, а не перетеканием.
+    tcut = [i for i, s_ in enumerate(shots) if s_.get("kind") == "title"]
+    cuts = sorted({0, len(shots)} | {i for i in tcut} | {i + 1 for i in tcut})
     if a.intro:
         n_hook = sum(1 for s in shots if is_hook(s["block"]))
         if not n_hook or n_hook >= len(shots):
             raise SystemExit("блок хука не найден — интро вставлять некуда")
-        cuts = [0, n_hook, len(shots)]
+        cuts = sorted(set(cuts) | {n_hook})
+        # Переход к заставке идёт ЧЕРЕЗ ЧЕРНОТУ, а не встык (решение Евгения
+        # 2026-09-30): хук договаривает, держит последний кадр, уходит в
+        # затемнение; заставка проявляется из черноты и в неё же уходит; из
+        # черноты выходит первое, что идёт дальше. Встык переход читался как
+        # обрыв на 43-й секунде.
 
     def render_chain(lo: int, hi: int, out: Path) -> None:
         """Отдельный кусок фильма: xfade внутри, по краям — чистая склейка."""
@@ -248,19 +276,59 @@ def main() -> None:
              "-i", str(track), "-map", "0:v", "-map", "1:a", "-c:v", "copy",
              "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000", "-shortest", str(out)])
 
-    parts = []
-    for lo, hi in zip(cuts, cuts[1:]):
+    def fade_edges(src: Path, dst: Path, fo: float = 0.0, fi: float = 0.0) -> Path:
+        """Затемнение на краях куска. Нужно вокруг заставок глав: цепочка xfade
+        размывает их чёрные края в перетекание, и название проступает призраком
+        поверх предыдущего кадра (поймано 2026-09-30)."""
+        if fo <= 0 and fi <= 0:
+            return src
+        d = dur(src)
+        vf, af = [], []
+        if fi > 0:
+            vf.append(f"fade=t=in:st=0:d={fi}"); af.append(f"afade=t=in:st=0:d={fi}")
+        if fo > 0:
+            vf.append(f"fade=t=out:st={d - fo:.3f}:d={fo}")
+            af.append(f"afade=t=out:st={d - fo:.3f}:d={fo}")
+        run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(src),
+             "-vf", ",".join(vf), "-af", ",".join(af),
+             "-c:v", "libx264", "-preset", "medium", "-crf", "17", "-r", str(FPS),
+             "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000", str(dst)])
+        return dst
+
+    parts, spans = [], list(zip(cuts, cuts[1:]))
+    for k, (lo, hi) in enumerate(spans):
         q = work / f"part{lo}_{hi}.mp4"
         mux_chain(lo, hi, q)
+        is_title = shots[lo].get("kind") == "title" and hi - lo == 1
+        nxt_title = k + 1 < len(spans) and shots[spans[k + 1][0]].get("kind") == "title"
+        prv_title = k > 0 and shots[spans[k - 1][0]].get("kind") == "title"
+        if not is_title and (nxt_title or prv_title):
+            q = fade_edges(q, work / f"part{lo}_{hi}_f.mp4",
+                           fo=0.8 if nxt_title else 0.0,
+                           fi=0.6 if prv_title else 0.0)
         parts.append(q)
     joined = parts[0] if len(parts) == 1 else None
 
     if a.intro:
         fit = work / "intro.mp4"
+        HOLD, OUT_D, IN_D = 0.8, 1.4, 0.8      # держим кадр · гасим хук · проявляем заставку
+        # хук: последний кадр держится, потом уход в чёрное вместе со звуком
+        d0 = dur(parts[0])
+        held = work / "part0_held.mp4"
+        run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(parts[0]),
+             "-vf", f"tpad=stop_mode=clone:stop_duration={HOLD},"
+                    f"fade=t=out:st={d0 + HOLD - OUT_D:.3f}:d={OUT_D}",
+             "-af", f"apad=pad_dur={HOLD},afade=t=out:st={d0 + HOLD - OUT_D:.3f}:d={OUT_D}",
+             "-c:v", "libx264", "-preset", "medium", "-crf", "17", "-r", str(FPS),
+             "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000", str(held)])
+        parts[0] = held
+        di = dur(Path(a.intro))
         run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", a.intro,
              "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
-                    f"setsar=1,fps={FPS}",
-             "-af", "aformat=channel_layouts=stereo,aresample=48000",
+                    f"setsar=1,fps={FPS},fade=t=in:st=0:d={IN_D},"
+                    f"fade=t=out:st={di - IN_D:.3f}:d={IN_D}",
+             "-af", f"aformat=channel_layouts=stereo,aresample=48000,"
+                    f"afade=t=in:st=0:d={IN_D},afade=t=out:st={di - IN_D:.3f}:d={IN_D}",
              "-c:v", "libx264", "-preset", "medium", "-crf", "17", "-r", str(FPS),
              "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-ar", "48000", str(fit)])
         parts.insert(1, fit)

@@ -18,12 +18,15 @@ from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 from pipeline import costs
 
-MODEL = "eleven_v3"
+# Модель выбирается ключом: eleven_v4 — самая эмоциональная, но у неё нет ни
+# style, ни speaker_boost, и родной speed она принимает молча и игнорирует
+# (проверено 2026-09-30), поэтому скорость по-прежнему делает atempo.
+MODEL = "eleven_v4"
 
 
-def say(key, vid, text, out: Path, stab=0.35, style=0.55):
+def say(key, vid, text, out: Path, stab=0.35, style=0.55, model=MODEL):
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{vid}/with-timestamps"
-    body = json.dumps({"text": text, "model_id": MODEL,
+    body = json.dumps({"text": text, "model_id": model,
                        "voice_settings": {"stability": stab, "similarity_boost": 0.8,
                                           "style": style, "use_speaker_boost": True}}).encode()
     for attempt in range(4):
@@ -47,6 +50,8 @@ def say(key, vid, text, out: Path, stab=0.35, style=0.55):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("dir")
+    ap.add_argument("--model", default=MODEL)
+    ap.add_argument("--only-block", default="", help="озвучить один блок по подстроке имени")
     ap.add_argument("--speed", type=float, default=1.0,
                     help="ускорение готового блока; таймкоды делятся на него")
     a = ap.parse_args()
@@ -81,6 +86,8 @@ def main():
 
     total = 0.0
     for bi, (bname, part) in enumerate(blocks, 1):
+        if a.only_block and a.only_block.lower() not in (bname or "").lower():
+            continue
         spoken = [s for s in part if (s.get("narr") or "").strip()]
         if not spoken:
             for s in part:
@@ -101,7 +108,7 @@ def main():
         if raw.exists() and (vdir / f"block{bi:02d}.json").exists():
             al = json.loads((vdir / f"block{bi:02d}.json").read_text(encoding="utf-8"))
         else:
-            al = say(key, vid, text, raw)
+            al = say(key, vid, text, raw, model=a.model)
             if al:
                 (vdir / f"block{bi:02d}.json").write_text(json.dumps(al), encoding="utf-8")
         if not al:

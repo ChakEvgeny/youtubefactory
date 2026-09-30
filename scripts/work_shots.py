@@ -62,10 +62,16 @@ def stamp(sh) -> str:
 # Везде, где флага нет, запрет остаётся жёстким: модель пишет бессмыслицу.
 NEG_TEXT = (" No text, no letters, no numbers, no handwriting, no labels, no signage, no logos, no "
             "watermark — nothing in the frame that resembles writing of any kind. ")
-NEG_TEXT_OK = (" The ONLY readable thing anywhere in the frame is the short number named in the "
-               "description, printed large and cleanly and spelled exactly as written there. "
-               "Every other line of writing — headlines, body text, captions — is drawn as plain "
-               "ruled bars with no readable letters at all. No logos, no brand names, no watermark. ")
+# Текст в кадре разрешён только тогда, когда в описании сказано ДОСЛОВНО, что
+# написано: без этого модель рисует каракули, похожие на буквы (правило Евгения
+# 2026-09-28). Поэтому формулировка «ровно эти знаки и ничего больше».
+NEG_TEXT_OK = (" The ONLY readable thing anywhere in the frame is the exact short word or number "
+               "quoted in the description, printed large and cleanly and spelled EXACTLY as "
+               "written there, character for character — do not invent, translate, extend or "
+               "abbreviate it. If the description quotes nothing, nothing in the frame is "
+               "readable. Every other line of writing — headlines, body text, captions, form "
+               "fields — is drawn as plain ruled bars with no readable letters at all. No logos, "
+               "no brand names, no watermark. ")
 
 NEG = (NEG_TEXT +
        # красный на коже читается как порезы и кровь — ловилось на костяшках и ладонях
@@ -83,9 +89,13 @@ NEG = (NEG_TEXT +
        # «пустая голова у всех, кроме ведущего» стоит в стиле, но не держит:
        # модель дорисовывает людей туда, где их не просили, и с чертами лица
        "Do not add any person who is not described. If the description mentions no people, the "
-       "frame is completely empty of people. Any person who is not the presenter has a "
-       "COMPLETELY BLANK head: no eyes, no nose, no mouth, no eyebrows, no facial features at "
-       "all, not even faint ones, in any angle including profile. "
+       # Пустые головы сняты 2026-09-28: когда люди появились в большинстве кадров,
+       # ряд безликих фигур стал читаться как брак, а не как приём. Лица обычные
+       # рисованные; ограничение осталось одно — никаких узнаваемых реальных людей.
+       "frame is completely empty of people. People are drawn with ordinary faces in the same "
+       "ink style as everything else: eyes, nose and mouth as simple confident lines, calm "
+       "working expressions, no caricature, no exaggerated emotion. They must not resemble any "
+       "real, famous or recognisable person. "
        "This frame shows the place where the rule happens. It does not explain the rule — the "
        "voice does that. Everything in the frame must be something that could genuinely be in "
        "this room, at this moment, belonging to this person. "
@@ -202,10 +212,20 @@ def main() -> None:
                   " in the same visual thread as the neighbouring shots.")
         # img2img: кадр-пара рисуется ОТ соседнего, иначе «та же форма» каждый раз
         # выходит другой формой. Ссылка ставится в поле ref номером шота.
+        # Две разные преемственности, и путать их нельзя:
+        #   ref        — тот же кадр: держим композицию, свет и ракурс (пара, проезд);
+        #   person_ref — тот же человек в ДРУГОЙ сцене: держим одежду и телосложение,
+        #                а композицию меняем. Без второго сквозной герой в каждом
+        #                кадре выходит новым человеком (правило Евгения 2026-09-28).
         ref = sh.get("ref")
+        pref = sh.get("person_ref")
         refs = [canon] if hero else None
         if ref:
             rp = out / f"s{int(ref):03d}.jpg"
+            if rp.exists():
+                refs = [rp]
+        elif pref:
+            rp = out / f"s{int(pref):03d}.jpg"
             if rp.exists():
                 refs = [rp]
         for attempt in range(3):
@@ -213,6 +233,11 @@ def main() -> None:
             if ref and refs:
                 extra += (" Keep the same objects, the same layout, the same camera angle and the "
                           "same lighting as the reference image — change only what is described.")
+            elif pref and refs:
+                extra += (" The person in this frame is the SAME PERSON as in the reference image:"
+                          " same clothes, same hair, same build, same age. The place, the camera"
+                          " angle and what they are doing are different — take only the person"
+                          " from the reference.")
             neg = NEG.replace(NEG_TEXT, NEG_TEXT_OK) if sh.get("allow_text") else NEG
             prompt = f"{style} {base}{HERO if hero else ''}{extra}{neg}"
             try:
